@@ -169,10 +169,16 @@ public:
 
 static SimpleGlobalCache<BoxCacheEntry> Boxes;
 
+#if defined(__linux__) && defined(__s390x__)
+SWIFT_CC(swift)
+#endif
 BoxPair::Return swift::swift_allocBox(const Metadata *type) {
   return SWIFT_RT_ENTRY_REF(swift_allocBox)(type);
 }
 
+#if defined(__linux__) && defined(__s390x__)
+SWIFT_CC(swift)
+#endif
 BoxPair::Return swift::swift_makeBoxUnique(OpaqueValue *buffer, const Metadata *type,
                                     size_t alignMask) {
   auto *inlineBuffer = reinterpret_cast<ValueBuffer*>(buffer);
@@ -198,6 +204,9 @@ BoxPair::Return swift::swift_makeBoxUnique(OpaqueValue *buffer, const Metadata *
   }
 }
 
+#if defined(__linux__) && defined(__s390x__)
+SWIFT_CC(swift)
+#endif
 SWIFT_RT_ENTRY_IMPL_VISIBILITY
 extern "C"
 BoxPair::Return SWIFT_RT_ENTRY_IMPL(swift_allocBox)(const Metadata *type) {
