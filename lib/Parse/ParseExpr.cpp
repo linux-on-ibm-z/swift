@@ -2437,7 +2437,13 @@ parseClosureSignatureIfPresent(SmallVectorImpl<CaptureListEntry> &captureList,
     interleave(tupleRepr->getElements(),
                [&](const TypeRepr *element) {
                  if (isa<TupleTypeRepr>(element)) {
+                   //OS << getTupleNames(element);
+#if defined(__linux__) && defined(__s390x__)
+                   std::string name_tmp =getTupleNames(element);
+                   OS << name_tmp;
+#else
                    OS << getTupleNames(element);
+#endif
                  } else {
                    auto name = tupleRepr->getElementName(elementIndex);
                    // If there is no label from the element
@@ -2446,7 +2452,14 @@ parseClosureSignatureIfPresent(SmallVectorImpl<CaptureListEntry> &captureList,
                    if (name.empty())
                      element->print(OS);
                    else
+#if defined(__linux__) && defined(__s390x__)
+                     if (name.get() != NULL ) {
+                       std::string name_tmp =name.get();
+                       OS << name_tmp;
+                   }
+#else
                      OS << name;
+#endif
                  }
 
                  ++elementIndex;
@@ -2472,7 +2485,12 @@ parseClosureSignatureIfPresent(SmallVectorImpl<CaptureListEntry> &captureList,
     if (isMultiLine)
       OS << '\n' << indent;
 
+#if defined(__linux__) && defined(__s390x__)
+    std::string TupleName= getTupleNames(typeLoc.getTypeRepr());
+    OS << "let " << TupleName << " = " << argName
+#else
     OS << "let " << getTupleNames(typeLoc.getTypeRepr()) << " = " << argName
+#endif
        << (isMultiLine ? "\n" + indent : "; ");
 
     diagnose(param->getStartLoc(), diag::anon_closure_tuple_param_destructuring)
