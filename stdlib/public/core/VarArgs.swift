@@ -80,6 +80,11 @@ let _x86_64SSERegisterWords = 2
 let _x86_64RegisterSaveWords = _x86_64CountGPRegisters + _x86_64CountSSERegisters * _x86_64SSERegisterWords
 #endif
 
+#if arch(s390x)
+@_versioned
+let _s390x_CountGPRegisters = 16
+#endif
+
 /// Invokes the given closure with a C `va_list` argument derived from the
 /// given array of arguments.
 ///
@@ -187,7 +192,12 @@ extension Int32 : CVarArg {
   /// Transform `self` into a series of machine words that can be
   /// appropriately interpreted by C varargs.
   public var _cVarArgEncoding: [Int] {
+#if arch(s390x)
+    return _encodeBitsAsWords(Int64(self))
+#else
     return _encodeBitsAsWords(self)
+#endif
+
   }
 }
 
@@ -195,7 +205,11 @@ extension Int16 : CVarArg {
   /// Transform `self` into a series of machine words that can be
   /// appropriately interpreted by C varargs.
   public var _cVarArgEncoding: [Int] {
+#if arch(s390x)
+    return _encodeBitsAsWords(Int64(self))
+#else
     return _encodeBitsAsWords(Int32(self))
+#endif
   }
 }
 
@@ -203,7 +217,11 @@ extension Int8 : CVarArg {
   /// Transform `self` into a series of machine words that can be
   /// appropriately interpreted by C varargs.
   public var _cVarArgEncoding: [Int] {
+#if arch(s390x)
+    return _encodeBitsAsWords(Int64(self))
+#else
     return _encodeBitsAsWords(Int32(self))
+#endif
   }
 }
 
@@ -235,7 +253,11 @@ extension UInt32 : CVarArg {
   /// Transform `self` into a series of machine words that can be
   /// appropriately interpreted by C varargs.
   public var _cVarArgEncoding: [Int] {
+#if arch(s390x)
+    return _encodeBitsAsWords(CUnsignedLongLong(self))
+#else
     return _encodeBitsAsWords(self)
+#endif
   }
 }
 
@@ -243,7 +265,11 @@ extension UInt16 : CVarArg {
   /// Transform `self` into a series of machine words that can be
   /// appropriately interpreted by C varargs.
   public var _cVarArgEncoding: [Int] {
+#if arch(s390x)
+    return _encodeBitsAsWords(CUnsignedLongLong(self))
+#else
     return _encodeBitsAsWords(CUnsignedInt(self))
+#endif
   }
 }
 
@@ -251,7 +277,11 @@ extension UInt8 : CVarArg {
   /// Transform `self` into a series of machine words that can be
   /// appropriately interpreted by C varargs.
   public var _cVarArgEncoding: [Int] {
+#if arch(s390x)
+    return _encodeBitsAsWords(CUnsignedLongLong(self))
+#else
     return _encodeBitsAsWords(CUnsignedInt(self))
+#endif
   }
 }
 
@@ -320,7 +350,7 @@ extension Double : _CVarArgPassedAsDouble, _CVarArgAligned {
   }
 }
 
-#if !arch(x86_64)
+#if !arch(x86_64) && !arch(s390x)
 
 /// An object that can manage the lifetime of storage backing a
 /// `CVaListPointer`.
@@ -427,19 +457,28 @@ final internal class _VaListBuilder {
   @_versioned
   struct Header {
     var gp_offset = CUnsignedInt(0)
+#if arch(x86_64)
     var fp_offset = CUnsignedInt(_x86_64CountGPRegisters * MemoryLayout<Int>.stride)
+#elseif arch(s390x)
+    var fp_offset = CUnsignedInt(_s390x_CountGPRegisters * MemoryLayout<Int>.stride)
+#endif
     var overflow_arg_area: UnsafeMutablePointer<Int>?
     var reg_save_area: UnsafeMutablePointer<Int>?
   }
 
   init() {
     // prepare the register save area
+#if arch(x86_64)
     storage = ContiguousArray(repeating: 0, count: _x86_64RegisterSaveWords)
+#elseif arch(s390x)
+    storage = ContiguousArray(repeating: 0, count: _s390x_CountGPRegisters)
+#endif
   }
 
   func append(_ arg: CVarArg) {
     var encoded = arg._cVarArgEncoding
 
+#if arch(x86_64)
     if arg is _CVarArgPassedAsDouble
       && sseRegistersUsed < _x86_64CountSSERegisters {
       var startIndex = _x86_64CountGPRegisters
@@ -461,12 +500,32 @@ final internal class _VaListBuilder {
         storage.append(w)
       }
     }
+#elseif arch(s390x)
+
+    if gpRegistersUsed < _s390x_CountGPRegisters {
+
+      for w in encoded {
+        storage[gpRegistersUsed] = w
+        gpRegistersUsed += 1
+      }
+    }
+     else {
+      for w in encoded {
+        storage.append(w)
+      }
+    }
+#endif
   }
 
   func va_list() -> CVaListPointer {
     header.reg_save_area = storage._baseAddress
+#if arch(x86_64)
     header.overflow_arg_area
       = storage._baseAddress + _x86_64RegisterSaveWords
+#elseif arch(s390x)
+    header.overflow_arg_area
+      = storage._baseAddress + _s390x_CountGPRegisters
+#endif
     return CVaListPointer(
              _fromUnsafeMutablePointer: UnsafeMutableRawPointer(
                Builtin.addressof(&self.header)))
