@@ -64,6 +64,9 @@ static const FullMetadata<HeapMetadata> ErrorMetadata{
   Metadata{MetadataKind::ErrorObject},
 };
 
+#if defined(__linux__) && defined(__s390x__)
+SWIFT_CC(swift)
+#endif
 BoxPair::Return
 swift::swift_allocError(const swift::Metadata *type,
                         const swift::WitnessTable *errorConformance,

@@ -20,8 +20,8 @@
 
 #define DECLARE_SWIFT_SECTION(name)                                            \
   __asm__("\t.section " #name ",\"a\"\n");                                     \
-  __attribute__((__visibility__("hidden"))) extern const char __start_##name;  \
-  __attribute__((__visibility__("hidden"))) extern const char __stop_##name;
+  __attribute__((__visibility__("hidden"))) extern const char __start_##name __attribute__((__aligned__(1))); \
+  __attribute__((__visibility__("hidden"))) extern const char __stop_##name __attribute__((__aligned__(1)));
 
 extern "C" {
 DECLARE_SWIFT_SECTION(swift2_protocol_conformances)

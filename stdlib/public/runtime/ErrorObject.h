@@ -171,6 +171,9 @@ struct SwiftError : SwiftErrorHeader {
 /// copied (or taken if \c isTake is true) into the newly-allocated error box.
 /// If value is null, the box's contents will be left uninitialized, and
 /// \c isTake should be false.
+#if defined(__linux__) && defined(__s390x__)
+SWIFT_CC(swift)
+#endif
 SWIFT_RUNTIME_STDLIB_API
 BoxPair::Return swift_allocError(const Metadata *type,
                                  const WitnessTable *errorConformance,
