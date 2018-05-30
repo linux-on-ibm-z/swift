@@ -457,11 +457,21 @@ llvm::Value *FixedTypeInfo::getEnumTagSinglePayload(IRGenFunction &IGF,
       Builder.CreateBitOrPointerCast(enumAddr.getAddress(), IGM.Int8PtrTy);
   auto *extraTagBitsAddr =
       Builder.CreateConstInBoundsGEP1_32(IGM.Int8Ty, valueAddr, fixedSize);
-
+#if defined(__linux__) && defined(__s390x__)
+  //Make it consistent with runtime
+  auto *extraTagBitsUnaligned =
+      Builder.CreateBitOrPointerCast(extraTagBits, IGM.Int8PtrTy);
+      extraTagBitsUnaligned = Builder.CreateConstGEP1_32(extraTagBitsUnaligned, 4);
+      extraTagBitsUnaligned = Builder.CreateGEP(extraTagBitsUnaligned, Builder.CreateNeg(numExtraTagBytes));
+      //On s390x the computation on i32 values normally uses real 32-bit instructions that do not touch the high half of the register - extend it to 64 bits
+      numExtraTagBytes = IGF.Builder.CreateZExt(numExtraTagBytes, IGM.SizeTy);
+      Builder.CreateMemCpy(extraTagBitsUnaligned, extraTagBitsAddr, numExtraTagBytes, 1);
+#else
   // TODO: big endian.
   Builder.CreateMemCpy(
       Builder.CreateBitOrPointerCast(extraTagBits, IGM.Int8PtrTy),
       extraTagBitsAddr, numExtraTagBytes, 1);
+#endif
   extraTagBits = Builder.CreateLoad(extraTagBits, Alignment(0));
 
   extraTagBitsBB = llvm::BasicBlock::Create(Ctx);
@@ -480,11 +490,22 @@ llvm::Value *FixedTypeInfo::getEnumTagSinglePayload(IRGenFunction &IGF,
       Builder.CreateICmpUGE(truncSize, four), zero,
       Builder.CreateShl(Builder.CreateSub(extraTagBits, one),
                         Builder.CreateMul(eight, truncSize)));
+#if defined(__linux__) && defined(__s390x__)
+  //Make it consistent with runtime
+  auto *caseIndexUnaligned =
+      Builder.CreateBitOrPointerCast(caseIndexFromValue, IGM.Int8PtrTy);
+  caseIndexUnaligned = Builder.CreateConstGEP1_32(caseIndexUnaligned, 4);
+  caseIndexUnaligned = Builder.CreateGEP(caseIndexUnaligned, Builder.CreateNeg(llvm::ConstantInt::getSigned(IGM.Int32Ty, std::min(Size(4U).getValue(), fixedSize))));
 
+  Builder.CreateMemCpy(
+      caseIndexUnaligned,
+       valueAddr, std::min(Size(4U).getValue(), fixedSize), 1);
+#else
   // TODO: big endian.
   Builder.CreateMemCpy(
       Builder.CreateBitOrPointerCast(caseIndexFromValue, IGM.Int8PtrTy),
       valueAddr, std::min(Size(4U).getValue(), fixedSize), 1);
+#endif
   caseIndexFromValue = Builder.CreateLoad(caseIndexFromValue, Alignment(0));
 
   auto *result1 = Builder.CreateAdd(
@@ -689,18 +710,36 @@ void FixedTypeInfo::storeEnumTagSinglePayload(IRGenFunction &IGF,
   Builder.CreateStore(payloadIndex, payloadIndexAddr, Alignment(0));
   auto *extraTagIndexAddr = Builder.CreateAlloca(int32Ty, nullptr);
   Builder.CreateStore(extraTagIndex, extraTagIndexAddr, Alignment(0));
+#if defined(__linux__) && defined(__s390x__)
+  //Make it consistent with runtime
+  auto *payloadIndexUnaligned = Builder.CreateBitOrPointerCast(payloadIndexAddr, IGM.Int8PtrTy);
+  payloadIndexUnaligned = Builder.CreateConstGEP1_32(payloadIndexUnaligned, 4);
+  payloadIndexUnaligned = Builder.CreateGEP(payloadIndexUnaligned, Builder.CreateNeg(llvm::ConstantInt::getSigned(IGM.Int32Ty, std::min(Size(4U).getValue(), fixedSize))));
+  Builder.CreateMemCpy(
+      valueAddr,
+      payloadIndexUnaligned,
+      std::min(Size(4U).getValue(), fixedSize), 1);
+#else
   // TODO: big endian
   Builder.CreateMemCpy(
       valueAddr,
       Builder.CreateBitOrPointerCast(payloadIndexAddr, IGM.Int8PtrTy),
       std::min(Size(4U).getValue(), fixedSize), 1);
+#endif
   auto *extraZeroAddr =
       Builder.CreateConstInBoundsGEP1_32(IGM.Int8Ty, valueAddr, 4);
   if (fixedSize > 4)
     Builder.CreateMemSet(
         extraZeroAddr, llvm::ConstantInt::get(IGM.Int8Ty, 0),
         Builder.CreateSub(size, llvm::ConstantInt::get(size->getType(), 4)), 1);
+#if defined(__linux__) && defined(__s390x__)
+  auto *extraTagIndexUnaligned = Builder.CreateBitOrPointerCast(extraTagIndexAddr, IGM.Int8PtrTy);
+  extraTagIndexUnaligned = Builder.CreateConstGEP1_32(extraTagIndexUnaligned, 4);
+  extraTagIndexUnaligned = Builder.CreateGEP(extraTagIndexUnaligned, Builder.CreateNeg(numExtraTagBytes));
+  emitMemCpy(IGF, extraTagBitsAddr, extraTagIndexUnaligned, numExtraTagBytes);
+#else
   emitMemCpy(IGF, extraTagBitsAddr, extraTagIndexAddr, numExtraTagBytes);
+#endif
   Builder.CreateBr(returnBB);
 
   Builder.emitBlock(returnBB);
