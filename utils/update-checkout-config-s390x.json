@@ -1,0 +1,75 @@
+{
+    "ssh-clone-pattern": "git@github.com:%s.git",
+    "https-clone-pattern": "https://github.com/%s.git",
+    "repos" : {
+        "llvm": {
+            "remote": { "id": "linux-on-ibm-z/swift-llvm" } },
+        "clang": {
+            "remote": { "id": "linux-on-ibm-z/swift-clang" } },
+        "swift": {
+            "remote": { "id": "linux-on-ibm-z/swift" } },
+        "lldb": {
+            "remote": { "id": "linux-on-ibm-z/swift-lldb" } },
+        "cmark": {
+            "remote": { "id": "linux-on-ibm-z/swift-cmark" } },
+        "llbuild": {
+            "remote": { "id": "linux-on-ibm-z/swift-llbuild" } },
+        "swiftpm": {
+            "remote": { "id": "linux-on-ibm-z/swift-package-manager" } },
+        "compiler-rt": {
+            "remote": { "id": "linux-on-ibm-z/swift-compiler-rt" } },
+        "swift-corelibs-xctest": {
+            "remote": { "id": "linux-on-ibm-z/swift-corelibs-xctest" } },
+        "swift-corelibs-foundation": {
+            "remote": { "id": "linux-on-ibm-z/swift-corelibs-foundation" } },
+        "swift-corelibs-libdispatch": {
+            "remote": { "id": "linux-on-ibm-z/swift-corelibs-libdispatch" } },
+        "swift-integration-tests": {
+            "remote": { "id": "linux-on-ibm-z/swift-integration-tests" } },
+        "swift-xcode-playground-support": {
+            "remote": { "id": "linux-on-ibm-z/swift-xcode-playground-support" } },
+        "ninja": {
+            "remote": { "id": "ninja-build/ninja" } }
+    },
+    "default-branch-scheme": "swift-4.1.2-s390x",
+    "branch-schemes": {
+        "master": {
+            "aliases": ["master", "stable"],
+            "repos": {
+                "llvm": "stable",
+                "clang": "stable",
+                "swift": "master",
+                "lldb": "stable",
+                "cmark": "master",
+                "llbuild": "master",
+                "swiftpm": "master",
+                "compiler-rt": "stable",
+                "swift-corelibs-xctest": "master",
+                "swift-corelibs-foundation": "master",
+                "swift-corelibs-libdispatch": "master",
+                "swift-integration-tests": "master",
+                "swift-xcode-playground-support": "master",
+                "ninja": "release"
+            }
+        },
+        "swift-4.1.2-s390x" : {
+            "aliases": ["swift-4.1.2-s390x"],
+            "repos": {
+                "llvm": "swift-4.1.2-s390x",
+                "clang": "swift-4.1.2-s390x",
+                "swift": "swift-4.1.2-s390x",
+                "lldb": "swift-4.1.2-s390x",
+                "cmark": "swift-4.1.2-s390x",
+                "llbuild": "swift-4.1.2-s390x",
+                "swiftpm": "swift-4.1.2-s390x",
+                "compiler-rt": "swift-4.1.2-s390x",
+                "swift-corelibs-xctest": "swift-4.1.2-s390x",
+                "swift-corelibs-foundation": "swift-4.1.2-s390x",
+                "swift-corelibs-libdispatch": "swift-4.1.2-s390x",
+                "swift-integration-tests": "swift-4.1.2-s390x",
+                "swift-xcode-playground-support": "swift-4.1.2-s390x",
+                "ninja": "release"
+            }
+        }
+    }
+}
