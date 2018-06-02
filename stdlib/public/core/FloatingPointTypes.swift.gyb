@@ -1541,9 +1541,13 @@ extension ${Self} {
   public init?(exactly value: ${That}) {
     _value = Builtin.${sign}itofp_${ThatBuiltinName}_FPIEEE${bits}(value._value)
 
-%   if srcBits >= SignificandBitCount:
-    guard let roundTrip = ${That}(exactly: self),
-      roundTrip == value else {
+%   if srcBits > SignificandBitCount:
+    // The magnitude of the integer must be representable by the significand.
+    // Omit trailing zeros as they will be encoded by the exponent.
+    let absv = value.magnitude
+    let mask: ${That}.Magnitude = ~((1 << (${SignificandBitCount}+1)) - 1)
+    let tz = absv.trailingZeroBitCount
+    if _slowPath((absv>>tz)&mask != 0) {
       return nil
     }
 %   end
