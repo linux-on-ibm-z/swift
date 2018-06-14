@@ -18,45 +18,82 @@
 
 namespace swift {
 
-/// This is a small and fast implementation of memcpy with a constant count. It
-/// should be a performance win for small constant values where the function
-/// can be inlined, the loop unrolled and the memory accesses merged.
-template <unsigned count> static void small_memcpy(void *dest, const void *src) {
-  uint8_t *d8 = (uint8_t*)dest;
-  const uint8_t *s8 = (const uint8_t*)src;
-  for (unsigned i = 0; i < count; i++) {
-    *d8++ = *s8++;
+static inline
+void write_native_byte_order(uint8_t *dst, size_t dstLen,
+                             uint32_t value, size_t valueLen,
+                             bool zeroUnused = true) {
+  if (valueLen > dstLen)
+    swift::crash("cannot write value to dst, dst is too short");
+  if (valueLen > sizeof(value))
+    swift::crash("value is longer than 4 bytes");
+
+#if defined(__LITTLE_ENDIAN__)
+  // write forwards
+  const std::ptrdiff_t inc = 1;
+#elif defined(__BIG_ENDIAN__)
+  // write backwards
+  const std::ptrdiff_t inc = -1;
+  dst = &dst[dstLen-1];
+#else
+#error "native byte order not defined"
+#endif
+
+  #pragma clang loop unroll_count(4) // fully unroll
+  for (size_t i = 0; i < valueLen; ++i) {
+    *dst = static_cast<uint8_t>(value >> (8*i));
+    dst += inc;
+  }
+
+  if (zeroUnused) {
+    #pragma clang loop unroll_count(8) // unroll to multiple of word size
+    for (size_t i = 0; i < (dstLen - valueLen); ++i) {
+      *dst = 0;
+      dst += inc;
+    }
   }
 }
 
-static inline void small_memcpy(void *dest, const void *src, unsigned count,
-                                bool countMaybeThree = false) {
-  // This is specialization of the memcpy line below with
-  // specialization for values of 1, 2 and 4.
-  // memcpy(dst, src, count)
-  if (count == 1) {
-    small_memcpy<1>(dest, src);
-  } else if (count == 2) {
-    small_memcpy<2>(dest, src);
-  } else if (countMaybeThree && count == 3) {
-    small_memcpy<3>(dest, src);
-  } else if (count == 4) {
-    small_memcpy<4>(dest, src);
-  } else {
-    swift::crash("Tagbyte values should be 1, 2 or 4.");
+static inline
+uint32_t read_native_byte_order(const uint8_t *src, size_t srcLen, size_t valueLen) {
+  uint32_t value = 0;
+  if (valueLen > srcLen)
+    swift::crash("value length is larger than the src length");
+  if (valueLen > sizeof(value))
+    swift::crash("value length is larger than 4");
+
+#if defined(__LITTLE_ENDIAN__)
+  // read forwards
+  const std::ptrdiff_t inc = 1;
+#elif defined(__BIG_ENDIAN__)
+  // read backwards
+  const std::ptrdiff_t inc = -1;
+  src = &src[srcLen-1];
+#else
+#error "native byte order not defined"
+#endif
+
+  #pragma clang loop unroll_count(4) // fully unroll
+  for (size_t i = 0; i < valueLen; ++i) {
+    value |= static_cast<uint32_t>(*src) << (i*8);
+    src += inc;
   }
+  return value;
 }
 
-static inline void small_memset(void *dest, uint8_t value, unsigned count) {
-  if (count == 1) {
-    memset(dest, value, 1);
-  } else if (count == 2) {
-    memset(dest, value, 2);
-  } else if (count == 4) {
-    memset(dest, value, 4);
-  } else {
+static inline
+void write_tag(uint8_t *dst, size_t dstLen, uint32_t tag, size_t tagLen) {
+  if (tagLen == 0 || tagLen == 3 || tagLen > 4) {
     swift::crash("Tagbyte values should be 1, 2 or 4.");
   }
+  write_native_byte_order(dst, dstLen, tag, tagLen);
+}
+
+static inline
+uint32_t read_tag(const uint8_t *src, size_t srcLen, size_t tagLen) {
+  if (tagLen == 0 || tagLen == 3 || tagLen > 4) {
+    swift::crash("Tagbyte values should be 1, 2 or 4.");
+  }
+  return read_native_byte_order(src, srcLen, tagLen);
 }
 
 inline unsigned getNumTagBytes(size_t size, unsigned emptyCases,
@@ -91,17 +128,10 @@ inline unsigned getEnumTagSinglePayloadImpl(
   if (emptyCases > payloadNumExtraInhabitants) {
     auto *valueAddr = reinterpret_cast<const uint8_t *>(enumAddr);
     auto *extraTagBitAddr = valueAddr + payloadSize;
-    unsigned extraTagBits = 0;
     unsigned numBytes =
         getNumTagBytes(payloadSize, emptyCases - payloadNumExtraInhabitants,
                        1 /*payload case*/);
-
-#if defined(__BIG_ENDIAN__)
-    small_memcpy(reinterpret_cast<uint8_t *>(&extraTagBits) + 4 - numBytes,
-                 extraTagBitAddr, numBytes);
-#else
-    small_memcpy(&extraTagBits, extraTagBitAddr, numBytes);
-#endif
+    unsigned extraTagBits = read_tag(extraTagBitAddr, numBytes, numBytes);
 
     // If the extra tag bits are zero, we have a valid payload or
     // extra inhabitant (checked below). If nonzero, form the case index from
@@ -112,18 +142,9 @@ inline unsigned getEnumTagSinglePayloadImpl(
 
       // In practice we should need no more than four bytes from the payload
       // area.
-      unsigned caseIndexFromValue = 0;
       unsigned numPayloadTagBytes = std::min(size_t(4), payloadSize);
-#if defined(__BIG_ENDIAN__)
-      if (numPayloadTagBytes)
-        small_memcpy(reinterpret_cast<uint8_t *>(&caseIndexFromValue) + 4 -
-                         numPayloadTagBytes,
-                     valueAddr, numPayloadTagBytes, true);
-#else
-      if (numPayloadTagBytes)
-        small_memcpy(&caseIndexFromValue, valueAddr,
-                     numPayloadTagBytes, true);
-#endif
+      unsigned caseIndexFromValue =
+          read_native_byte_order(valueAddr, payloadSize, numPayloadTagBytes);
       unsigned noPayloadIndex =
           (caseIndexFromExtraTagBits | caseIndexFromValue) +
           payloadNumExtraInhabitants;
@@ -146,7 +167,6 @@ inline void storeEnumTagSinglePayloadImpl(
     size_t payloadNumExtraInhabitants,
     void (*storeExtraInhabitant)(OpaqueValue *, int whichCase,
                                  const Metadata *)) {
-
   auto *valueAddr = reinterpret_cast<uint8_t *>(value);
   auto *extraTagBitAddr = valueAddr + payloadSize;
   unsigned numExtraTagBytes =
@@ -158,8 +178,9 @@ inline void storeEnumTagSinglePayloadImpl(
   // For payload or extra inhabitant cases, zero-initialize the extra tag bits,
   // if any.
   if (whichCase <= payloadNumExtraInhabitants) {
-    if (numExtraTagBytes != 0)
-      small_memset(extraTagBitAddr, 0, numExtraTagBytes);
+    #pragma clang loop unroll_count(4) // fully unroll
+    for (unsigned i = 0; i < numExtraTagBytes; ++i)
+      extraTagBitAddr[i] = 0;
 
     // If this is the payload case, we're done.
     if (whichCase == 0)
@@ -184,28 +205,17 @@ inline void storeEnumTagSinglePayloadImpl(
     payloadIndex = caseIndex & ((1U << payloadBits) - 1U);
   }
 
-    // Store into the value.
-#if defined(__BIG_ENDIAN__)
+  // Store into the value.
   unsigned numPayloadTagBytes = std::min(size_t(4), payloadSize);
-  if (numPayloadTagBytes)
-    small_memcpy(valueAddr,
-                 reinterpret_cast<uint8_t *>(&payloadIndex) + 4 -
-                     numPayloadTagBytes,
-                 numPayloadTagBytes, true);
-  if (numExtraTagBytes)
-    small_memcpy(extraTagBitAddr,
-                 reinterpret_cast<uint8_t *>(&extraTagIndex) + 4 -
-                     numExtraTagBytes,
-                 numExtraTagBytes);
-#else
-  unsigned numPayloadTagBytes = std::min(size_t(4), payloadSize);
-  if (numPayloadTagBytes)
-    small_memcpy(valueAddr, &payloadIndex, numPayloadTagBytes, true);
-  if (payloadSize > 4)
-    memset(valueAddr + 4, 0, payloadSize - 4);
-  if (numExtraTagBytes)
-    small_memcpy(extraTagBitAddr, &extraTagIndex, numExtraTagBytes);
-#endif
+  if (numPayloadTagBytes > 0) {
+    write_native_byte_order(valueAddr, payloadSize,
+                            payloadIndex, numPayloadTagBytes,
+                            /* zeroUnused = */ true);
+  }
+  if (numExtraTagBytes > 0) {
+    write_tag(extraTagBitAddr, numExtraTagBytes,
+              extraTagIndex, numExtraTagBytes);
+  }
 }
 
 } /* end namespace swift */
