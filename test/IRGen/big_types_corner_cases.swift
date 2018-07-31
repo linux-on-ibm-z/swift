@@ -35,7 +35,7 @@ class OptionalInoutFuncType {
   }
 }
 
-// CHECK-LABEL: define{{( protected)?}} i32 @main(i32, i8**)
+// CHECK-LABEL: define protected signext i32 @main(i32 signext, i8**) #2 {
 // CHECK: call void @llvm.lifetime.start
 // CHECK: call void @llvm.memcpy
 // CHECK: call void @llvm.lifetime.end

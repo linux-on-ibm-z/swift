@@ -9,7 +9,7 @@ func f() -> Bool? { return nil }
 })()
 
 // CHECK-LABEL: @_T09alloc_boxyycfU_
-// CHECK: <label>:8:
+// CHECK: <label>:9:
 // CHECK-NOT: call void @swift_setDeallocating
 // CHECK: call void @swift_rt_swift_deallocUninitializedObject
 
