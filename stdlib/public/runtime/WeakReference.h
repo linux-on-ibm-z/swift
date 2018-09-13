@@ -78,6 +78,9 @@ class WeakReferenceBits {
 #if !SWIFT_OBJC_INTEROP
     NativeMarkerMask  = 0,
     NativeMarkerValue = 0
+#elif __s390x__
+    NativeMarkerMask  = SWIFT_ABI_S390X_OBJC_WEAK_REFERENCE_MARKER_MASK,
+    NativeMarkerValue = SWIFT_ABI_S390X_OBJC_WEAK_REFERENCE_MARKER_VALUE
 #elif __x86_64__
     NativeMarkerMask  = SWIFT_ABI_X86_64_OBJC_WEAK_REFERENCE_MARKER_MASK,
     NativeMarkerValue = SWIFT_ABI_X86_64_OBJC_WEAK_REFERENCE_MARKER_VALUE

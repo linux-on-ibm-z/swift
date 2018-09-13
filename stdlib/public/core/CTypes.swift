@@ -82,6 +82,9 @@ public typealias CLongDouble = Double
 public typealias CLongDouble = Float80
 #endif
 // TODO: Fill in definitions for other OSes.
+#if arch(s390x)
+public typealias CLongDouble = Double
+#endif
 #endif
 
 // FIXME: Is it actually UTF-32 on Darwin?

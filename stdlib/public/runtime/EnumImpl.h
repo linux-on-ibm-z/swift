@@ -112,14 +112,16 @@ inline unsigned getEnumTagSinglePayloadImpl(
 
       // In practice we should need no more than four bytes from the payload
       // area.
+#if defined(__BIG_ENDIAN__)
+      unsigned long caseIndexFromValue = 0;
+      unsigned numPayloadTagBytes = std::min(size_t(8), payloadSize);
+      if (numPayloadTagBytes)
+        memcpy(reinterpret_cast<uint8_t *>(&caseIndexFromValue) + 8 -
+	       numPayloadTagBytes,
+	       valueAddr, numPayloadTagBytes);
+#else
       unsigned caseIndexFromValue = 0;
       unsigned numPayloadTagBytes = std::min(size_t(4), payloadSize);
-#if defined(__BIG_ENDIAN__)
-      if (numPayloadTagBytes)
-        small_memcpy(reinterpret_cast<uint8_t *>(&caseIndexFromValue) + 4 -
-                         numPayloadTagBytes,
-                     valueAddr, numPayloadTagBytes, true);
-#else
       if (numPayloadTagBytes)
         small_memcpy(&caseIndexFromValue, valueAddr,
                      numPayloadTagBytes, true);
@@ -174,7 +176,12 @@ inline void storeEnumTagSinglePayloadImpl(
   // Factor the case index into payload and extra tag parts.
   unsigned noPayloadIndex = whichCase - 1;
   unsigned caseIndex = noPayloadIndex - payloadNumExtraInhabitants;
+#if defined(__BIG_ENDIAN__)
+  unsigned long payloadIndex;
+  unsigned extraTagIndex;
+#else
   unsigned payloadIndex, extraTagIndex;
+#endif
   if (payloadSize >= 4) {
     extraTagIndex = 1;
     payloadIndex = caseIndex;
@@ -186,12 +193,12 @@ inline void storeEnumTagSinglePayloadImpl(
 
     // Store into the value.
 #if defined(__BIG_ENDIAN__)
-  unsigned numPayloadTagBytes = std::min(size_t(4), payloadSize);
+  unsigned numPayloadTagBytes = std::min(size_t(8), payloadSize);
   if (numPayloadTagBytes)
-    small_memcpy(valueAddr,
-                 reinterpret_cast<uint8_t *>(&payloadIndex) + 4 -
-                     numPayloadTagBytes,
-                 numPayloadTagBytes, true);
+    memcpy(valueAddr,
+	   reinterpret_cast<uint8_t *>(&payloadIndex) + 8 -
+	   numPayloadTagBytes,
+	   numPayloadTagBytes);
   if (numExtraTagBytes)
     small_memcpy(extraTagBitAddr,
                  reinterpret_cast<uint8_t *>(&extraTagIndex) + 4 -

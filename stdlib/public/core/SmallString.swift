@@ -58,9 +58,22 @@ struct _SmallUTF8String {
 // Small string creation interface
 //
 extension _SmallUTF8String {
+#if _endian(big)
+  // Limit the capacity to 8 for big endian because the highest byte of the high
+  // word needs to store the extra info including the character count. It is
+  // difficult to store the extra info in the lowest byte because many of the code
+  // assume that the highest byte stores the extra info (e.g. ObjC tagged pointers).
+  // In addition, if we use the lowest byte to store the extra info,
+  // we need to align objects so that the pointers to them have one-byte room.
+  // Nakaike
+  @inlinable
+  public // @testable
+  static var capacity: Int { return 8 }
+#else
   @inlinable
   public // @testable
   static var capacity: Int { return 15 }
+#endif
 
 #if _runtime(_ObjC)
   public // @testable
@@ -180,7 +193,11 @@ func _bytesToUInt(_ input: UnsafePointer<UInt8>, _ c: Int) -> UInt {
   var r: UInt = 0
   var shift: Int = 0
   for idx in 0..<c {
+#if _endian(big)
+    r = r | (UInt(input[idx]) &<< (56 - shift) )
+#else
     r = r | (UInt(input[idx]) &<< shift)
+#endif
     shift = shift &+ 8
   }
   return r
@@ -263,7 +280,11 @@ extension _SmallUTF8String {
 #if arch(i386) || arch(arm)
     unsupportedOn32bit()
 #else
+#if _endian(big)
+      return Int(bitPattern: UInt(self._uncheckedCodeUnit(at: 8)))
+#else
       return Int(bitPattern: UInt(self._uncheckedCodeUnit(at: 15)))
+#endif
 #endif
     }
     @inline(__always) set {
@@ -271,15 +292,26 @@ extension _SmallUTF8String {
     unsupportedOn32bit()
 #else
       _sanityCheck(newValue <= _SmallUTF8String.capacity, "out of bounds")
+#if _endian(big)
+      self._uncheckedSetCodeUnit(
+        at: 8, to: UInt8(truncatingIfNeeded: UInt(bitPattern: newValue)))
+#else
       self._uncheckedSetCodeUnit(
         at: 15, to: UInt8(truncatingIfNeeded: UInt(bitPattern: newValue)))
+#endif
 #endif
     }
   }
 
+#if _endian(big)
+  @inlinable
+  public // @testable
+  var capacity: Int { @inline(__always) get { return 8 } }
+#else
   @inlinable
   public // @testable
   var capacity: Int { @inline(__always) get { return 15 } }
+#endif
 
   @inlinable
   public // @testable
@@ -293,7 +325,11 @@ extension _SmallUTF8String {
       unsupportedOn32bit()
 #else
       // TODO (TODO: JIRA): Consider using our last bit for this
+#if _endian(big)
+      _sanityCheck(_uncheckedCodeUnit(at: 8) & 0xF0 == 0)
+#else
       _sanityCheck(_uncheckedCodeUnit(at: 15) & 0xF0 == 0)
+#endif
 
       let topBitMask: UInt = 0x8080_8080_8080_8080
       return (_storage.low | _storage.high) & topBitMask == 0
@@ -418,7 +454,11 @@ extension _SmallUTF8String {
 #else
     _sanityCheck(n > 1)
     let finalCount = self.count * n
+#if _endian(big)
+    guard finalCount <= 8 else { return nil }
+#else
     guard finalCount <= 15 else { return nil }
+#endif
     var ret = self
     for _ in 0..<(n &- 1) {
       ret = ret._appending(self)._unsafelyUnwrappedUnchecked
@@ -491,7 +531,11 @@ extension _SmallUTF8String {
 #if arch(i386) || arch(arm)
     return nil // Never form small strings on 32-bit
 #else
+#if _endian(big)
+    guard utf16Length <= 8 else { return nil }
+#else
     guard utf16Length <= 15 else { return nil }
+#endif
 
     // TODO: transcode
     guard isASCII else { return nil }
@@ -508,7 +552,11 @@ extension _SmallUTF8String {
         fatalError("Somehow un-transcodable?")
       }
       _sanityCheck(transcoded.count <= 4, "how?")
+#if _endian(big)
+      guard bufferIdx + transcoded.count <= 8 else { return nil }
+#else
       guard bufferIdx + transcoded.count <= 15 else { return nil }
+#endif
       for i in transcoded.indices {
         self._uncheckedSetCodeUnit(at: bufferIdx, to: transcoded[i])
         bufferIdx += 1
@@ -660,7 +708,11 @@ extension _SmallUTF8String {
   @inlinable
   @inline(__always)
   func _uncheckedCodeUnit(at i: Int) -> UInt8 {
+#if _endian(big)
+    _sanityCheck(i >= 0 && i <= 8)
+#else
     _sanityCheck(i >= 0 && i <= 15)
+#endif
     if i < 8 {
       return _storage.low._uncheckedGetByte(at: i)
     } else {
@@ -682,11 +734,19 @@ extension _SmallUTF8String {
     _sanityCheck(upperBound <= self.count)
     guard upperBound >= 8 else {
       var low = self.lowUnpackedBits
+#if _endian(big)
+      let shift = (8 - upperBound) &* 8
+      let mask: UInt = ~((1 &<< shift) &- 1)
+#else
       let shift = upperBound &* 8
       let mask: UInt = (1 &<< shift) &- 1
+#endif
       low &= mask
       return _SmallUTF8String(low: low, high: 0, count: upperBound)
     }
+#if _endian(big)
+    _sanityCheck(upperBound == 8)
+ #endif
     let shift = (upperBound &- 8) &* 8
     _sanityCheck(shift % 8 == 0)
 
@@ -704,10 +764,18 @@ extension _SmallUTF8String {
     let high: UInt
     if lowerBound < 8 {
       let shift: UInt = UInt(bitPattern: lowerBound) &* 8
+#if _endian(big)
+      low = (self.lowUnpackedBits &<< shift)
+      high = 0
+#else
       let newLowHigh: UInt = self.highUnpackedBits & ((1 &<< shift) &- 1)
       low = (self.lowUnpackedBits &>> shift) | (newLowHigh &<< (64 &- shift))
       high = self.highUnpackedBits &>> shift
+#endif
     } else {
+#if _endian(big)
+      _sanityCheck(false)
+#endif
       high = 0
       low = self.highUnpackedBits &>> ((lowerBound &- 8) &* 8)
     }
@@ -836,7 +904,11 @@ extension UInt {
   @inline(__always)
   func _uncheckedGetByte(at i: Int) -> UInt8 {
     _sanityCheck(i >= 0 && i < MemoryLayout<UInt>.stride)
+#if _endian(big)
+    let shift = UInt(bitPattern: (7 - i)) &* 8
+#else
     let shift = UInt(bitPattern: i) &* 8
+#endif
     return UInt8(truncatingIfNeeded: (self &>> shift))
   }
 }
