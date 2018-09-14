@@ -1123,6 +1123,9 @@ swift_dynamicCastMetatypeImpl(const Metadata *sourceType,
                               const Metadata *targetType) {
   auto origSourceType = sourceType;
 
+#if defined (__s390x__)
+  if (targetType == nullptr) return nullptr;
+#endif
   switch (targetType->getKind()) {
   case MetadataKind::ObjCClassWrapper:
     // Get the actual class object.
