@@ -32,24 +32,58 @@ func unsupportedOn32bit() -> Never { _conditionallyUnreachable() }
 @_fixed_layout
 public // @testable
 struct _SmallUTF8String {
-  typealias _RawBitPattern = (low: UInt, high: UInt)
+  // Store words in little-endian byte format. Doing this allows the rest of the
+  // code to assume the host is a little-endian platform. The order of bytes in
+  // memory is the same as it would be for a regular string allowing bit casts
+  // on any platform.
+  @_fixed_layout
+  @usableFromInline
+  internal struct _RawBitPattern: Equatable {
+    @usableFromInline
+    internal var _storage: (low: UInt, high: UInt)
 
-  //
-  // TODO: pretty ASCII art.
-  //
-  // TODO: endianess awareness day
-  //
+    @inlinable
+    var low: UInt {
+      @inline(__always) get { return _storage.low.littleEndian }
+      @inline(__always) set { _storage.low = newValue.littleEndian }
+    }
+
+    @inlinable
+    var high: UInt {
+      @inline(__always) get { return _storage.high.littleEndian }
+      @inline(__always) set { _storage.high = newValue.littleEndian }
+    }
+
+    @inlinable
+    @inline(__always)
+    init(low l: UInt, high h :UInt) {
+      _storage.low = l.littleEndian
+      _storage.high = h.littleEndian
+    }
+
+    @inlinable
+    @inline(__always)
+    static func == (lhs: _RawBitPattern, rhs: _RawBitPattern) -> Bool {
+      return lhs._storage == rhs._storage
+    }
+  }
+
   // The low byte of the first word stores the first code unit. There is up to
   // 15 such code units encodable, with the second-highest byte of the second
   // word being the final code unit. The high byte of the final word stores the
   // count.
   //
+  //   |0 1 2 3 4 5 6 7 8 9 A B C D E F|
+  //   |      low      |     high      |
+  //   |            string           | |
+  //    ⮤ first (low) byte      count ⮥
+  //
   @usableFromInline
-  var _storage: _RawBitPattern = (0,0)
+  var _storage: _RawBitPattern
   @inlinable
   @inline(__always)
   init() {
-    self._storage = (0,0)
+    self._storage = _RawBitPattern(low: 0, high: 0)
   }
 }
 #endif // 64-bit
@@ -150,7 +184,7 @@ extension _SmallUTF8String {
     }
     high |= (UInt(count) &<< (8*15))
     let low = _bytesToUInt(addr, lowCount)
-    _storage = (low, high)
+    _storage = _RawBitPattern(low: low, high: high)
 
     // FIXME: support transcoding
     if !self.isASCII { return nil }
@@ -585,7 +619,8 @@ extension _SmallUTF8String {
 extension _SmallUTF8String {
   @inlinable
   @inline(__always)
-  init(_rawBits: _RawBitPattern) {
+  init(_rawBits: (low: UInt, high: UInt)) {
+    self.init()
     self._storage.low = _rawBits.low
     self._storage.high = _rawBits.high
     _invariantCheck()
@@ -830,8 +865,6 @@ func _castBufPtr<A, B>(
 
 extension UInt {
   // Fetches the `i`th byte, from least-significant to most-significant
-  //
-  // TODO: endianess awareness day
   @inlinable
   @inline(__always)
   func _uncheckedGetByte(at i: Int) -> UInt8 {
