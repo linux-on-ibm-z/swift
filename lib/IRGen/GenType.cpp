@@ -420,6 +420,15 @@ static llvm::Value *computeExtraTagBytes(IRGenFunction &IGF, IRBuilder &Builder,
   return phi;
 }
 
+static Address alignAddressForBigEndian(IRGenFunction &IGF, Address originAddress, llvm::Value *shift){
+  auto &Builder = IGF.Builder;
+  auto &IGM = IGF.IGM;
+  auto *alignedAddress = Builder.CreateBitCast(originAddress, IGM.Int8PtrTy).getAddress();
+  alignedAddress = Builder.CreateConstGEP1_32(alignedAddress, 4);
+  alignedAddress = Builder.CreateGEP(alignedAddress, Builder.CreateNeg(shift));
+  return Address(alignedAddress, Alignment(1));
+}
+
 llvm::Value *FixedTypeInfo::getEnumTagSinglePayload(IRGenFunction &IGF,
                                                     llvm::Value *numEmptyCases,
                                                     Address enumAddr,
@@ -471,13 +480,11 @@ llvm::Value *FixedTypeInfo::getEnumTagSinglePayload(IRGenFunction &IGF,
                                          fixedSize.getValue());
 #if defined(__linux__) && defined(__s390x__)
   //Make it consistent with runtime
-  auto* extraTagBitsUnaligned =
-      Builder.CreateBitCast(extraTagBitsSlot, IGM.Int8PtrTy).getAddress();
-  extraTagBitsUnaligned = Builder.CreateConstGEP1_32(extraTagBitsUnaligned, 4);
-  extraTagBitsUnaligned = Builder.CreateGEP(extraTagBitsUnaligned, Builder.CreateNeg(numExtraTagBytes));
-  //On s390x the computation on i32 values normally uses real 32-bit instructions that do not touch the high half of the register - extend it to 64 bits
+  Address alignedExtraTagBitsSlot = alignAddressForBigEndian(IGF, extraTagBitsSlot, numExtraTagBytes);
   numExtraTagBytes = IGF.Builder.CreateZExt(numExtraTagBytes, IGM.SizeTy);
-  Builder.CreateMemCpy(extraTagBitsUnaligned, extraTagBitsAddr, numExtraTagBytes, 1);
+  Builder.CreateMemCpy(
+      Builder.CreateBitCast(alignedExtraTagBitsSlot, IGM.Int8PtrTy).getAddress(), 
+      extraTagBitsAddr, numExtraTagBytes, 1);
 #else
   // TODO: big endian.
   Builder.CreateMemCpy(
@@ -505,15 +512,13 @@ llvm::Value *FixedTypeInfo::getEnumTagSinglePayload(IRGenFunction &IGF,
 
 #if defined(__linux__) && defined(__s390x__)
   //Make it consistent with runtime
-  auto* caseIndexUnaligned =
-      Builder.CreateBitCast(caseIndexFromValueSlot, IGM.Int8PtrTy).getAddress();
-  caseIndexUnaligned = Builder.CreateConstGEP1_32(caseIndexUnaligned, 4);
-  caseIndexUnaligned = Builder.CreateGEP(caseIndexUnaligned, Builder.CreateNeg(llvm::ConstantInt::getSigned(IGM.Int32Ty, std::min(Size(4U).getValue(), fixedSize.getValue()))));
+  Address alignedCaseIndex = alignAddressForBigEndian(IGF, caseIndexFromValueSlot, llvm::ConstantInt::getSigned(IGM.Int32Ty, std::min(Size(4U).getValue(), fixedSize.getValue())));
   Builder.CreateMemCpy(
-      Address(caseIndexUnaligned, Alignment(1)),
-      Address(valueAddr, Alignment(1)), std::min(Size(4U), fixedSize));
+      alignedCaseIndex,
+      Address(valueAddr, Alignment(1)), 
+      std::min(Size(4U), fixedSize));
 #else
-  // TODO: big endian.
+// TODO: big endian.
   Builder.CreateMemCpy(
       Builder.CreateBitCast(caseIndexFromValueSlot, IGM.Int8PtrTy),
       Address(valueAddr, Alignment(1)),
@@ -731,15 +736,14 @@ void FixedTypeInfo::storeEnumTagSinglePayload(IRGenFunction &IGF,
   Builder.CreateStore(extraTagIndex, extraTagIndexAddr);
 #if defined(__linux__) && defined(__s390x__)
   //Make it consistent with runtime
-  auto* payloadIndexUnaligned = Builder.CreateBitCast(payloadIndexAddr, IGM.Int8PtrTy).getAddress();
-  payloadIndexUnaligned = Builder.CreateConstGEP1_32(payloadIndexUnaligned, 4);
-  payloadIndexUnaligned = Builder.CreateGEP(payloadIndexUnaligned, Builder.CreateNeg(llvm::ConstantInt::getSigned(IGM.Int32Ty, std::min(Size(4U).getValue(), fixedSize.getValue()))));
+  Address alignedPayloadIndexAddr = alignAddressForBigEndian(IGF, payloadIndexAddr, llvm::ConstantInt::getSigned(IGM.Int32Ty, std::min(Size(4U).getValue(), fixedSize.getValue())));
   Builder.CreateMemCpy(
       valueAddr,
-      Address(payloadIndexUnaligned, Alignment(1)),
+      alignedPayloadIndexAddr,
       std::min(Size(4U), fixedSize));
 #else
-  // TODO: big endian
+//#endif
+// TODO: big endian
   Builder.CreateMemCpy(
       valueAddr,
       Builder.CreateBitCast(payloadIndexAddr, IGM.Int8PtrTy),
@@ -751,13 +755,9 @@ void FixedTypeInfo::storeEnumTagSinglePayload(IRGenFunction &IGF,
         extraZeroAddr, llvm::ConstantInt::get(IGM.Int8Ty, 0),
         Builder.CreateSub(size, llvm::ConstantInt::get(size->getType(), 4)));
 #if defined(__linux__) && defined(__s390x__)
-  auto *extraTagIndexUnaligned = Builder.CreateBitCast(extraTagIndexAddr, IGM.Int8PtrTy).getAddress();
-  extraTagIndexUnaligned = Builder.CreateConstGEP1_32(extraTagIndexUnaligned, 4);
-  extraTagIndexUnaligned = Builder.CreateGEP(extraTagIndexUnaligned, Builder.CreateNeg(numExtraTagBytes));
-  emitMemCpy(IGF, extraTagBitsAddr, Address(extraTagIndexUnaligned, Alignment(1)), numExtraTagBytes);
-#else
-  emitMemCpy(IGF, extraTagBitsAddr, extraTagIndexAddr, numExtraTagBytes);
+  extraTagIndexAddr = alignAddressForBigEndian(IGF, extraTagIndexAddr, numExtraTagBytes);
 #endif
+  emitMemCpy(IGF, extraTagBitsAddr, extraTagIndexAddr, numExtraTagBytes);
   Builder.CreateBr(returnBB);
 
   Builder.emitBlock(returnBB);
