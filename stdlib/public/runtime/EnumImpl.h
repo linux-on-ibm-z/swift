@@ -113,12 +113,14 @@ inline unsigned getEnumTagSinglePayloadImpl(
       // In practice we should need no more than four bytes from the payload
       // area.
 #if defined(__BIG_ENDIAN__)
+      // Use memcpy on BE so that high order bytes containing index
+      // is copied over
       unsigned long caseIndexFromValue = 0;
       unsigned numPayloadTagBytes = std::min(size_t(8), payloadSize);
       if (numPayloadTagBytes)
         memcpy(reinterpret_cast<uint8_t *>(&caseIndexFromValue) + 8 -
-	       numPayloadTagBytes,
-	       valueAddr, numPayloadTagBytes);
+                         numPayloadTagBytes,
+                     valueAddr, numPayloadTagBytes);
 #else
       unsigned caseIndexFromValue = 0;
       unsigned numPayloadTagBytes = std::min(size_t(4), payloadSize);
@@ -176,12 +178,7 @@ inline void storeEnumTagSinglePayloadImpl(
   // Factor the case index into payload and extra tag parts.
   unsigned noPayloadIndex = whichCase - 1;
   unsigned caseIndex = noPayloadIndex - payloadNumExtraInhabitants;
-#if defined(__BIG_ENDIAN__)
-  unsigned long payloadIndex;
-  unsigned extraTagIndex;
-#else
   unsigned payloadIndex, extraTagIndex;
-#endif
   if (payloadSize >= 4) {
     extraTagIndex = 1;
     payloadIndex = caseIndex;
@@ -193,12 +190,14 @@ inline void storeEnumTagSinglePayloadImpl(
 
     // Store into the value.
 #if defined(__BIG_ENDIAN__)
-  unsigned numPayloadTagBytes = std::min(size_t(8), payloadSize);
+  unsigned numPayloadTagBytes = std::min(size_t(4), payloadSize);
   if (numPayloadTagBytes)
-    memcpy(valueAddr,
-	   reinterpret_cast<uint8_t *>(&payloadIndex) + 8 -
-	   numPayloadTagBytes,
-	   numPayloadTagBytes);
+    small_memcpy(valueAddr,
+                 reinterpret_cast<uint8_t *>(&payloadIndex) + 4 -
+                     numPayloadTagBytes,
+                 numPayloadTagBytes, true);
+  if (payloadSize > 4)
+    memset(valueAddr + 4, 0, payloadSize - 4);
   if (numExtraTagBytes)
     small_memcpy(extraTagBitAddr,
                  reinterpret_cast<uint8_t *>(&extraTagIndex) + 4 -
@@ -218,3 +217,4 @@ inline void storeEnumTagSinglePayloadImpl(
 } /* end namespace swift */
 
 #endif /* SWIFT_RUNTIME_ENUMIMPL_H */
+
