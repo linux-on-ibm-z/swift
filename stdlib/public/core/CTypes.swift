@@ -84,7 +84,7 @@ public typealias CLongDouble = Float80
 // TODO: Fill in definitions for other OSes.
 #if arch(s390x)
 // On s390x '-mlong-double-64' option with size of 64-bits makes the
-// Long Double type equivalent to Double type
+// Long Double type equivalent to Double type.
 public typealias CLongDouble = Double
 #endif
 #endif
