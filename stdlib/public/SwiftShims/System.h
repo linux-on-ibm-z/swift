@@ -152,6 +152,8 @@
 /*********************************** s390x ************************************/
 
 // Top byte of pointers is unused, and heap objects are eight-byte aligned.
+// On s390x it is theoretically possible to have high bit set but in practice
+// it is unlikely.
 #define SWIFT_ABI_S390X_SWIFT_SPARE_BITS_MASK 0xFF00000000000007ULL
 
 // Objective-C reserves just the high bit for tagged pointers.
