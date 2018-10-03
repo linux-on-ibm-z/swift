@@ -424,7 +424,7 @@ static Address alignAddress(IRGenFunction &IGF, Address originAddress, llvm::Val
   auto &Builder = IGF.Builder;
   auto &IGM = IGF.IGM;
   auto *alignedAddress = Builder.CreateBitCast(originAddress, IGM.Int8PtrTy).getAddress();
-#if defined(__linux__) && defined(__s390x__)
+#if defined(__linux__) && defined(__BIG_ENDIAN__)
   alignedAddress = Builder.CreateConstGEP1_32(alignedAddress, 4);
   alignedAddress = Builder.CreateGEP(alignedAddress, Builder.CreateNeg(shift));
 #endif
