@@ -57,16 +57,11 @@ public:
 
   llvm::Error writeBytes(uint32_t Offset, ArrayRef<uint8_t> Buffer) override;
 
-  /// This is an optimized version of \c writeBytes that assumes we know the
-  /// size of \p Value at compile time (which in particular holds for integers).
-  /// It does so by exposing the memcpy to the optimizer along with the size 
-  /// of the value being assigned; the compiler can then optimize the memcpy
-  /// into a fixed set of instructions.
-  /// This assumes that the endianess of this steam is the same as the native
-  /// endianess on the executing machine. No endianess transformations are
-  /// performed.
+  /// This is an optimized version of \c writeBytes specifically for integers.
+  /// Integers are written in the byte order specified by the stream.
   template<typename T>
-  llvm::Error writeRaw(uint32_t Offset, T Value) {
+  llvm::Error writeInteger(uint32_t Offset, T Value) {
+    static_assert(std::is_integral<T>::value, "Integer required.");
     if (auto Error = checkOffsetForWrite(Offset, sizeof(T))) {
       return Error;
     }
@@ -77,7 +72,8 @@ public:
       Data.resize(RequiredSize);
     }
 
-    ::memcpy(Data.data() + Offset, &Value, sizeof Value);
+    llvm::support::endian::write<T, llvm::support::unaligned>(
+      Data.data() + Offset, Value, Endian);
 
     return llvm::Error::success();
   }
