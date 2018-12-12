@@ -54,12 +54,16 @@ internal struct _SmallString {
   }
 
   @inlinable @inline(__always)
+  internal init(_ object: _SmallString) {
+    self.init(raw: object.rawBits)
+  }
+
+  @inlinable @inline(__always)
   internal init() {
     self.init(raw: _StringObject(empty:()).rawBits)
   }
 }
 
-// TODO
 extension _SmallString {
   @inlinable
   internal static var capacity: Int {
@@ -112,23 +116,13 @@ extension _SmallString {
     }
   }
 
-  // Give raw, nul-terminated code units. This is only for limited internal
-  // usage: it always clears the discriminator and count (in case it's full)
-  @inlinable
-  internal var zeroTerminatedRawCodeUnits: RawBitPattern {
-    @inline(__always) get {
-      return (
-        self._storage.0,
-        self._storage.1 & _StringObject.Nibbles.largeAddressMask)
-    }
-  }
-
   @inlinable
   internal func computeIsASCII() -> Bool {
-    // TODO(String micro-performance): Evaluate other expressions, e.g. | first
     let asciiMask: UInt64 = 0x8080_8080_8080_8080
-    let raw = zeroTerminatedRawCodeUnits
-    return (raw.0 & asciiMask == 0) && (raw.1 & asciiMask == 0)
+    let trailingMask = asciiMask & _StringObject.Nibbles.largeAddressMask
+    let l = self.leadingRawBits & asciiMask
+    let t = self.trailingRawBits & trailingMask
+    return (l | t) == 0
   }
 }
 
@@ -210,7 +204,10 @@ extension _SmallString {
   internal func withUTF8<Result>(
     _ f: (UnsafeBufferPointer<UInt8>) throws -> Result
   ) rethrows -> Result {
-    var raw = self.zeroTerminatedRawCodeUnits
+    // Code points need to be in little endian byte order and zero terminated.
+    let l = self.leadingRawBits
+    let t = self.trailingRawBits & _StringObject.Nibbles.largeAddressMask
+    var raw = (l.littleEndian, t.littleEndian)
     return try Swift.withUnsafeBytes(of: &raw) { rawBufPtr in
       let ptr = rawBufPtr.baseAddress._unsafelyUnwrappedUnchecked
         .assumingMemoryBound(to: UInt8.self)
@@ -224,13 +221,18 @@ extension _SmallString {
   internal mutating func withMutableCapacity(
     _ f: (UnsafeMutableBufferPointer<UInt8>) throws -> Int
   ) rethrows {
-    let len = try withUnsafeMutableBytes(of: &self._storage) {
+    // Code points need to be in little endian byte order.
+    var raw = (self.leadingRawBits.littleEndian, self.trailingRawBits.littleEndian)
+    let len = try withUnsafeMutableBytes(of: &raw) {
       (rawBufPtr: UnsafeMutableRawBufferPointer) -> Int in
       let ptr = rawBufPtr.baseAddress._unsafelyUnwrappedUnchecked
         .assumingMemoryBound(to: UInt8.self)
       return try f(UnsafeMutableBufferPointer(
         start: ptr, count: _SmallString.capacity))
     }
+    // Convert code points back into the host's byte order.
+    self.leadingRawBits = raw.0.littleEndian
+    self.trailingRawBits = raw.1.littleEndian
 
     _internalInvariant(len <= _SmallString.capacity)
     discriminator = .small(withCount: len, isASCII: self.computeIsASCII())
@@ -245,17 +247,12 @@ extension _SmallString {
     let count = input.count
     guard count <= _SmallString.capacity else { return nil }
 
-    // TODO(SIMD): The below can be replaced with just be a masked unaligned
-    // vector load
+    var s = _SmallString()
     let ptr = input.baseAddress._unsafelyUnwrappedUnchecked
-    let leading = _bytesToUInt64(ptr, Swift.min(input.count, 8))
-    let trailing = count > 8 ? _bytesToUInt64(ptr + 8, count &- 8) : 0
-
-    let isASCII = (leading | trailing) & 0x8080_8080_8080_8080 == 0
-    let discriminator = _StringObject.Discriminator.small(
-      withCount: count,
-      isASCII: isASCII)
-    self.init(raw: (leading, trailing | discriminator.rawBits))
+    s.leadingRawBits = _bytesToUInt64(ptr, Swift.min(input.count, 8))
+    s.trailingRawBits = count > 8 ? _bytesToUInt64(ptr + 8, count &- 8) : 0
+    s.discriminator = .small(withCount: count, isASCII: s.computeIsASCII())
+    self.init(s)
   }
 
   @usableFromInline // @testable
@@ -263,23 +260,19 @@ extension _SmallString {
     let totalCount = base.count + other.count
     guard totalCount <= _SmallString.capacity else { return nil }
 
-    // TODO(SIMD): The below can be replaced with just be a couple vector ops
-
-    var result = base
+    var s = base
     var writeIdx = base.count
     for readIdx in 0..<other.count {
-      result[writeIdx] = other[readIdx]
+      s[writeIdx] = other[readIdx]
       writeIdx &+= 1
     }
     _internalInvariant(writeIdx == totalCount)
 
-    let isASCII = base.isASCII && other.isASCII
-    let discriminator = _StringObject.Discriminator.small(
+    s.discriminator = .small(
       withCount: totalCount,
-      isASCII: isASCII)
+      isASCII: base.isASCII && other.isASCII)
 
-    let (leading, trailing) = result.zeroTerminatedRawCodeUnits
-    self.init(raw: (leading, trailing | discriminator.rawBits))
+    self.init(s)
   }
 }
 
@@ -305,8 +298,6 @@ extension _SmallString {
 
 extension UInt64 {
   // Fetches the `i`th byte, from least-significant to most-significant
-  //
-  // TODO: endianess awareness day
   @inlinable @inline(__always)
   internal func _uncheckedGetByte(at i: Int) -> UInt8 {
     _internalInvariant(i >= 0 && i < MemoryLayout<UInt64>.stride)
@@ -315,8 +306,6 @@ extension UInt64 {
   }
 
   // Sets the `i`th byte, from least-significant to most-significant
-  //
-  // TODO: endianess awareness day
   @inlinable @inline(__always)
   internal mutating func _uncheckedSetByte(at i: Int, to value: UInt8) {
     _internalInvariant(i >= 0 && i < MemoryLayout<UInt64>.stride)
