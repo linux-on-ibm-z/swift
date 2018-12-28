@@ -143,16 +143,16 @@ TEST_F(ExponentialGrowthAppendingBinaryByteStreamTest, WriteIntoMiddle) {
   EXPECT_EQ(6u, Stream.getLength());
 }
 
-TEST_F(ExponentialGrowthAppendingBinaryByteStreamTest, WriteRaw) {
+TEST_F(ExponentialGrowthAppendingBinaryByteStreamTest, WriteInteger) {
   ExponentialGrowthAppendingBinaryByteStream Stream(llvm::support::little);
 
-  // Test the writeRaw method
+  // Test the writeInteger method
   std::vector<uint8_t> InitialData = {'H', 'e', 'l', 'l', 'o'};
   auto InitialDataRef = makeArrayRef(InitialData);
   EXPECT_THAT_ERROR(Stream.writeBytes(0, InitialDataRef), Succeeded());
   EXPECT_EQ(InitialDataRef, Stream.data());
 
-  EXPECT_THAT_ERROR(Stream.writeRaw(5, (uint8_t)' '), Succeeded());
+  EXPECT_THAT_ERROR(Stream.writeInteger(5, (uint8_t)' '), Succeeded());
   std::vector<uint8_t> AfterFirstInsert = {'H', 'e', 'l', 'l', 'o', ' '};
   auto AfterFirstInsertRef = makeArrayRef(AfterFirstInsert);
   EXPECT_EQ(AfterFirstInsertRef, Stream.data());
@@ -162,7 +162,7 @@ TEST_F(ExponentialGrowthAppendingBinaryByteStreamTest, WriteRaw) {
                       'o' << 8 |
                       'r' << 16 |
                       'l' << 24;
-  EXPECT_THAT_ERROR(Stream.writeRaw(6, ToInsert), Succeeded());
+  EXPECT_THAT_ERROR(Stream.writeInteger(6, ToInsert), Succeeded());
   std::vector<uint8_t> AfterSecondInsert = {'H', 'e', 'l', 'l', 'o', ' ',
                                             'w', 'o', 'r', 'l'};
   auto AfterSecondInsertRef = makeArrayRef(AfterSecondInsert);
