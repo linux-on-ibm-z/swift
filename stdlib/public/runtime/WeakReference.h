@@ -94,6 +94,9 @@ class WeakReferenceBits {
 #elif defined(__arm64__) || defined(__aarch64__) || defined(_M_ARM64)
     NativeMarkerMask  = SWIFT_ABI_ARM64_OBJC_WEAK_REFERENCE_MARKER_MASK,
     NativeMarkerValue = SWIFT_ABI_ARM64_OBJC_WEAK_REFERENCE_MARKER_VALUE
+#elif __s390x__
+    NativeMarkerMask  = SWIFT_ABI_S390X_OBJC_WEAK_REFERENCE_MARKER_MASK,
+    NativeMarkerValue = SWIFT_ABI_S390X_OBJC_WEAK_REFERENCE_MARKER_VALUE
 #else
     #error unknown architecture
 #endif

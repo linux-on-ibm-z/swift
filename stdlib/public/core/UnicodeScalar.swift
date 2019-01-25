@@ -473,7 +473,9 @@ extension Unicode.Scalar {
     _ body: (UnsafeBufferPointer<UInt8>) throws -> Result
   ) rethrows -> Result {
     let encodedScalar = UTF8.encode(self)!
+    // Code units are stored in little endian byte order.
     var (codeUnits, utf8Count) = encodedScalar._bytes
+    codeUnits = codeUnits.littleEndian
     return try Swift.withUnsafePointer(to: &codeUnits) {
       return try $0.withMemoryRebound(to: UInt8.self, capacity: 4) {
         return try body(UnsafeBufferPointer(start: $0, count: utf8Count))
