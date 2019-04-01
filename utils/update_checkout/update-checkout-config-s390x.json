@@ -1,0 +1,96 @@
+{
+    "ssh-clone-pattern": "git@github.com:%s.git",
+    "https-clone-pattern": "https://github.com/%s.git",
+    "repos" : {
+        "llvm": {
+            "remote": { "id": "linux-on-ibm-z/swift-llvm" } },
+        "clang": {
+            "remote": { "id": "linux-on-ibm-z/swift-clang" } },
+        "swift": {
+            "remote": { "id": "linux-on-ibm-z/swift" } },
+        "lldb": {
+            "remote": { "id": "linux-on-ibm-z/swift-lldb" } },
+        "cmark": {
+            "remote": { "id": "linux-on-ibm-z/swift-cmark" } },
+        "llbuild": {
+            "remote": { "id": "linux-on-ibm-z/swift-llbuild" } },
+        "swiftpm": {
+            "remote": { "id": "linux-on-ibm-z/swift-package-manager" } },
+        "swift-syntax": {
+            "remote": { "id": "linux-on-ibm-z/swift-syntax" } },
+        "swift-stress-tester": {
+            "remote": { "id": "linux-on-ibm-z/swift-stress-tester" } },
+        "compiler-rt": {
+            "remote": { "id": "linux-on-ibm-z/swift-compiler-rt" } },
+        "swift-corelibs-xctest": {
+            "remote": { "id": "linux-on-ibm-z/swift-corelibs-xctest" } },
+        "swift-corelibs-foundation": {
+            "remote": { "id": "linux-on-ibm-z/swift-corelibs-foundation" } },
+        "swift-corelibs-libdispatch": {
+            "remote": { "id": "linux-on-ibm-z/swift-corelibs-libdispatch" } },
+        "swift-integration-tests": {
+            "remote": { "id": "linux-on-ibm-z/swift-integration-tests" } },
+        "swift-xcode-playground-support": {
+            "remote": { "id": "linux-on-ibm-z/swift-xcode-playground-support" } },
+        "ninja": {
+            "remote": { "id": "ninja-build/ninja" } },
+        "icu": {
+            "remote": { "id": "unicode-org/icu" },
+            "platforms": [ "Linux" ] 
+	},
+        "libcxx": {
+            "remote": { "id": "linux-on-ibm-z/swift-libcxx" } },
+        "clang-tools-extra": {
+            "remote": { "id": "linux-on-ibm-z/swift-clang-tools-extra" }
+	}
+    },
+    "default-branch-scheme": "master",
+    "branch-schemes": {
+        "master": {
+            "aliases": ["master", "stable"],
+            "repos": {
+                "llvm": "stable",
+                "clang": "stable",
+                "swift": "master",
+                "lldb": "stable",
+                "cmark": "master",
+                "llbuild": "master",
+                "swiftpm": "master",
+                "swift-syntax": "master",
+                "swift-stress-tester": "master",
+                "compiler-rt": "stable",
+                "swift-corelibs-xctest": "master",
+                "swift-corelibs-foundation": "master",
+                "swift-corelibs-libdispatch": "master",
+                "swift-integration-tests": "master",
+                "swift-xcode-playground-support": "master",
+                "ninja": "release",
+                "icu": "release-61-1"
+            }
+        },
+        "swift-5.0-s390x-04-01-19" : {
+            "aliases": ["swift-5.0-s390x-04-01-19"],
+            "repos": {
+                "llvm": "swift-5.0-s390x-04-01-19",
+                "clang": "swift-5.0-s390x-04-01-19",
+                "compiler-rt": "swift-5.0-s390x-04-01-19",
+                "swift": "swift-5.0-s390x-04-01-19",
+                "lldb": "swift-5.0-s390x-04-01-19",
+                "cmark": "swift-5.0-s390x-04-01-19",
+                "llbuild": "swift-5.0-s390x-04-01-19",
+                "swiftpm": "swift-5.0-s390x-04-01-19",
+                "swift-syntax": "swift-5.0-s390x-04-01-19",
+                "swift-stress-tester": "swift-5.0-s390x-04-01-19",
+                "swift-corelibs-xctest": "swift-5.0-s390x-04-01-19",
+                "swift-corelibs-foundation": "swift-5.0-s390x-04-01-19",
+                "swift-corelibs-libdispatch": "swift-5.0-s390x-04-01-19",
+                "swift-integration-tests": "swift-5.0-s390x-04-01-19",
+                "swift-xcode-playground-support": "swift-5.0-s390x-04-01-19",
+                "ninja": "release",
+                "icu": "release-61-1",
+                "clang-tools-extra": "swift-5.0-s390x-04-01-19",
+                "libcxx": "swift-5.0-s390x-04-01-19"
+            }
+        }
+    }
+}
