@@ -303,7 +303,10 @@ public:
   
   /// Return the spare bit mask of the structure built so far.
   SpareBitVector getSpareBits() const {
-    return CurSpareBits ? SpareBitVector::fromAPInt(CurSpareBits.getValue()) : SpareBitVector();
+    if (CurSpareBits) {
+      return SpareBitVector::fromAPInt(CurSpareBits.getValue());
+    }
+    return SpareBitVector();
   }
 
   /// Build the current elements as a new anonymous struct type.
@@ -338,7 +341,7 @@ class StructLayout {
   Size MinimumSize;
   
   /// The statically-known spare bit mask.
-  SpareBitVector SpareBits;
+  llvm::Optional<llvm::APInt> SpareBits;
 
   /// Whether this layout is fixed in size.  If so, the size and
   /// alignment are exact.
@@ -372,7 +375,7 @@ public:
                ArrayRef<ElementLayout> elements)
     : MinimumAlign(builder.getAlignment()),
       MinimumSize(builder.getSize()),
-      SpareBits(builder.getSpareBits()),
+      SpareBits(builder.getSpareBits().asAPInt()),
       IsFixedLayout(builder.isFixedLayout()),
       IsKnownPOD(builder.isPOD()),
       IsKnownBitwiseTakable(builder.isBitwiseTakable()),
@@ -388,8 +391,12 @@ public:
   llvm::Type *getType() const { return Ty; }
   Size getSize() const { return MinimumSize; }
   Alignment getAlignment() const { return MinimumAlign; }
-  const SpareBitVector &getSpareBits() const { return SpareBits; }
-  SpareBitVector &getSpareBits() { return SpareBits; }
+  SpareBitVector getSpareBits() {
+    if (SpareBits) {
+      return SpareBitVector::fromAPInt(SpareBits.getValue());
+    }
+    return SpareBitVector();
+  }
   bool isKnownEmpty() const { return isFixedLayout() && MinimumSize.isZero(); }
   IsPOD_t isPOD() const { return IsKnownPOD; }
   IsBitwiseTakable_t isBitwiseTakable() const {

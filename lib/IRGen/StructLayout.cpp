@@ -95,7 +95,7 @@ StructLayout::StructLayout(IRGenModule &IGM,
     assert(!builder.empty() == requiresHeapHeader(layoutKind));
     MinimumAlign = Alignment(1);
     MinimumSize = Size(0);
-    SpareBits.clear();
+    clear(SpareBits);
     IsFixedLayout = true;
     IsKnownPOD = IsPOD;
     IsKnownBitwiseTakable = IsBitwiseTakable;
@@ -104,7 +104,7 @@ StructLayout::StructLayout(IRGenModule &IGM,
   } else {
     MinimumAlign = builder.getAlignment();
     MinimumSize = builder.getSize();
-    SpareBits = builder.getSpareBits();
+    SpareBits = builder.getSpareBits().asAPInt();
     IsFixedLayout = builder.isFixedLayout();
     IsKnownPOD = builder.isPOD();
     IsKnownBitwiseTakable = builder.isBitwiseTakable();
