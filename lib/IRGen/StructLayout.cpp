@@ -38,6 +38,32 @@ static bool requiresHeapHeader(LayoutKind kind) {
   llvm_unreachable("bad layout kind!");
 }
 
+static void append(llvm::Optional<llvm::APInt> &to,
+                   const llvm::APInt &add,
+                   bool isLittleEndian) {
+  if (!to) {
+    to = add;
+    return;
+  }
+  const llvm::APInt &val = to.getValue();
+  llvm::APInt v = val.zext(val.getBitWidth() + add.getBitWidth());
+  if (isLittleEndian) {
+    // little-endian: append to MSB
+    v.insertBits(add, val.getBitWidth());
+  } else {
+    // big-endian: append to LSB
+    v <<= add.getBitWidth();
+    v.insertBits(add, 0);
+  }
+  to = v;
+}
+
+static void clear(llvm::Optional<llvm::APInt> &x) {
+  if (x) {
+    x.getValue().clearAllBits();
+  }
+}
+
 /// Perform structure layout on the given types.
 StructLayout::StructLayout(IRGenModule &IGM,
                            NominalTypeDecl *decl,
@@ -78,7 +104,7 @@ StructLayout::StructLayout(IRGenModule &IGM,
   } else {
     MinimumAlign = builder.getAlignment();
     MinimumSize = builder.getSize();
-    SpareBits = std::move(builder.getSpareBits());
+    SpareBits = builder.getSpareBits();
     IsFixedLayout = builder.isFixedLayout();
     IsKnownPOD = builder.isPOD();
     IsKnownBitwiseTakable = builder.isBitwiseTakable();
@@ -263,9 +289,12 @@ void StructLayoutBuilder::addFixedSizeElement(ElementLayout &elt) {
     if (isFixedLayout()) {
       auto paddingTy = llvm::ArrayType::get(IGM.Int8Ty, paddingRequired);
       StructFields.push_back(paddingTy);
-      
+
       // The padding can be used as spare bits by enum layout.
-      CurSpareBits.appendSetBits(Size(paddingRequired).getValueInBits());
+      auto numPaddingBits = Size(paddingRequired).getValueInBits();
+      append(CurSpareBits,
+             ~llvm::APInt(numPaddingBits, 0),
+             IGM.Triple.isLittleEndian());
     }
   }
 
@@ -318,7 +347,9 @@ void StructLayoutBuilder::addElementAtFixedOffset(ElementLayout &elt) {
   StructFields.push_back(elt.getType().getStorageType());
   
   // Carry over the spare bits from the element.
-  CurSpareBits.append(eltTI.getSpareBits());
+  append(CurSpareBits,
+         eltTI.getSpareBits().asAPInt(),
+         IGM.Triple.isLittleEndian());
 }
 
 /// Add an element at a non-fixed offset to the aggregate.
@@ -326,7 +357,7 @@ void StructLayoutBuilder::addElementAtNonFixedOffset(ElementLayout &elt) {
   assert(!isFixedLayout());
   elt.completeNonFixed(elt.getType().isPOD(ResilienceExpansion::Maximal),
                        NextNonFixedOffsetIndex);
-  CurSpareBits.clear();
+  clear(CurSpareBits);
 }
 
 /// Add a non-fixed-size element to the aggregate at offset zero.
@@ -335,7 +366,7 @@ void StructLayoutBuilder::addNonFixedSizeElementAtOffsetZero(ElementLayout &elt)
   assert(!isa<FixedTypeInfo>(elt.getType()));
   assert(CurSize.isZero());
   elt.completeInitialNonFixedSize(elt.getType().isPOD(ResilienceExpansion::Maximal));
-  CurSpareBits.clear();
+  clear(CurSpareBits);
 }
 
 /// Produce the current fields as an anonymous structure.
