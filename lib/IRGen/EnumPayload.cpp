@@ -37,6 +37,22 @@ static llvm::Type *getPayloadType(EnumPayload::LazyValue value) {
   return value.dyn_cast<llvm::Value *>()->getType();
 }
 
+/// sliceInt extracts an integer of size bits from the given offset
+/// in bits. The offset is in memory and so the result will depend
+/// on the endianness of the target platform. Both the offset and
+/// size must be byte-aligned.
+static llvm::APInt sliceInt(const IRGenModule &IGM,
+                            const llvm::APInt &value,
+                            unsigned offset,
+                            unsigned size) {
+  assert(offset % 8 == 0 && "offset must be byte aligned");
+  assert(size % 8 == 0 && "size must be byte aligned");
+  if (!IGM.Triple.isLittleEndian()) {
+    offset = value.getBitWidth() - offset - size;
+  }
+  return value.extractBits(size, offset);
+}
+
 EnumPayload EnumPayload::zero(IRGenModule &IGM, EnumPayloadSchema schema) {
   // We don't need to create any values yet; they can be filled in when
   // real values are inserted.
@@ -552,7 +568,9 @@ void EnumPayload::emitSwitch(IRGenFunction &IGF,
 }
 
 llvm::Value *
-EnumPayload::emitCompare(IRGenFunction &IGF, APInt mask, APInt value) const {
+EnumPayload::emitCompare(IRGenFunction &IGF,
+                         const APInt &mask,
+                         const APInt &value) const {
   // Succeed trivially for an empty payload, or if the payload is masked
   // out completely.
   if (PayloadValues.empty() || mask == 0)
@@ -560,24 +578,23 @@ EnumPayload::emitCompare(IRGenFunction &IGF, APInt mask, APInt value) const {
 
   assert((~mask & value) == 0
          && "value has masked out bits set?!");
-  
+
   auto &DL = IGF.IGM.DataLayout;
   llvm::Value *condition = nullptr;
+  unsigned offset = 0;
   for (auto &pv : PayloadValues) {
     auto v = forcePayloadValue(pv);
     unsigned size = DL.getTypeSizeInBits(v->getType());
 
     // Break off a piece of the mask and value.
-    auto maskPiece = mask.zextOrTrunc(size);
-    auto valuePiece = value.zextOrTrunc(size);
-    
-    mask = mask.lshr(size);
-    value = value.lshr(size);
-    
+    auto maskPiece = sliceInt(IGF.IGM, mask, offset, size);
+    auto valuePiece = sliceInt(IGF.IGM, value, offset, size);
+    offset += size;
+
     // If this piece is zero, it doesn't affect the comparison.
     if (maskPiece == 0)
       continue;
-    
+
     // Apply the mask and test.
     bool isMasked = !maskPiece.isAllOnesValue();
     auto intTy = llvm::IntegerType::get(IGF.IGM.getLLVMContext(), size);
@@ -587,12 +604,12 @@ EnumPayload::emitCompare(IRGenFunction &IGF, APInt mask, APInt value) const {
         || (!isa<llvm::IntegerType>(v->getType())
             && !isa<llvm::PointerType>(v->getType())))
       v = IGF.Builder.CreateBitOrPointerCast(v, intTy);
-    
+
     if (isMasked) {
       auto maskConstant = llvm::ConstantInt::get(intTy, maskPiece);
       v = IGF.Builder.CreateAnd(v, maskConstant);
     }
-    
+
     llvm::Value *valueConstant = llvm::ConstantInt::get(intTy, valuePiece);
     valueConstant = IGF.Builder.CreateBitOrPointerCast(valueConstant,
                                                        v->getType());
@@ -602,7 +619,7 @@ EnumPayload::emitCompare(IRGenFunction &IGF, APInt mask, APInt value) const {
     else
       condition = IGF.Builder.CreateAnd(condition, cmp);
   }
-  
+
   // We should have handled the cases where there are no significant conditions
   // in the early exit.
   assert(condition && "no significant condition?!");
@@ -610,20 +627,21 @@ EnumPayload::emitCompare(IRGenFunction &IGF, APInt mask, APInt value) const {
 }
 
 void
-EnumPayload::emitApplyAndMask(IRGenFunction &IGF, APInt mask) {
+EnumPayload::emitApplyAndMask(IRGenFunction &IGF, const APInt &mask) {
   // Early exit if the mask has no effect.
   if (mask.isAllOnesValue())
     return;
 
   auto &DL = IGF.IGM.DataLayout;
+  unsigned offset = 0;
   for (auto &pv : PayloadValues) {
     auto payloadTy = getPayloadType(pv);
     unsigned size = DL.getTypeSizeInBits(payloadTy);
 
     // Break off a chunk of the mask.
-    auto maskPiece = mask.zextOrTrunc(size);
-    mask = mask.lshr(size);
-    
+    auto maskPiece = sliceInt(IGF.IGM, mask, offset, size);
+    offset += size;
+
     // If this piece is all ones, it has no effect.
     if (maskPiece.isAllOnesValue())
       continue;
@@ -638,7 +656,7 @@ EnumPayload::emitApplyAndMask(IRGenFunction &IGF, APInt mask) {
       pv = payloadTy;
       continue;
     }
-    
+
     // Otherwise, apply the mask to the existing value.
     auto v = pv.get<llvm::Value*>();
     auto payloadIntTy = llvm::IntegerType::get(IGF.IGM.getLLVMContext(), size);
@@ -651,19 +669,20 @@ EnumPayload::emitApplyAndMask(IRGenFunction &IGF, APInt mask) {
 }
 
 void
-EnumPayload::emitApplyOrMask(IRGenFunction &IGF, APInt mask) {
+EnumPayload::emitApplyOrMask(IRGenFunction &IGF, const APInt &mask) {
   // Early exit if the mask has no effect.
   if (mask == 0)
     return;
 
   auto &DL = IGF.IGM.DataLayout;
+  unsigned offset = 0;
   for (auto &pv : PayloadValues) {
     auto payloadTy = getPayloadType(pv);
     unsigned size = DL.getTypeSizeInBits(payloadTy);
 
     // Break off a chunk of the mask.
-    auto maskPiece = mask.zextOrTrunc(size);
-    mask = mask.lshr(size);
+    auto maskPiece = sliceInt(IGF.IGM, mask, offset, size);
+    offset += size;
 
     // If this piece is zero, it has no effect.
     if (maskPiece == 0)

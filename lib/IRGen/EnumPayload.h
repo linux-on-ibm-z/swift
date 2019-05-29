@@ -147,14 +147,14 @@ public:
   
   /// Emit an equality comparison operation that payload & mask == value.
   llvm::Value *emitCompare(IRGenFunction &IGF,
-                           APInt mask,
-                           APInt value) const;
+                           const APInt &mask,
+                           const APInt &value) const;
   
   /// Apply an AND mask to the payload.
-  void emitApplyAndMask(IRGenFunction &IGF, APInt mask);
+  void emitApplyAndMask(IRGenFunction &IGF, const APInt &mask);
   
   /// Apply an OR mask to the payload.
-  void emitApplyOrMask(IRGenFunction &IGF, APInt mask);
+  void emitApplyOrMask(IRGenFunction &IGF, const APInt &mask);
   
   /// Apply an OR mask to the payload.
   void emitApplyOrMask(IRGenFunction &IGF, EnumPayload mask);
