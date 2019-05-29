@@ -160,10 +160,9 @@ public:
   void emitApplyOrMask(IRGenFunction &IGF, EnumPayload mask);
   
   /// Gather bits from an enum payload based on a spare bit mask.
-  llvm::Value *emitGatherSpareBits(IRGenFunction &IGF,
-                                   const SpareBitVector &spareBits,
-                                   unsigned firstBitOffset,
-                                   unsigned bitWidth) const;
+  llvm::Value *emitGatherBits(IRGenFunction &IGF,
+                              const APInt &mask,
+                              unsigned bitWidth) const;
 };
   
 }

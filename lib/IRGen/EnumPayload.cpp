@@ -722,54 +722,49 @@ EnumPayload::emitApplyOrMask(IRGenFunction &IGF,
 }
 
 llvm::Value *
-EnumPayload::emitGatherSpareBits(IRGenFunction &IGF,
-                                 const SpareBitVector &spareBits,
-                                 unsigned firstBitOffset,
-                                 unsigned bitWidth) const {
+EnumPayload::emitGatherBits(IRGenFunction &IGF,
+                            const llvm::APInt &mask,
+                            unsigned bitWidth) const {
   auto &DL = IGF.IGM.DataLayout;
   unsigned payloadOffset = 0;
-  llvm::Value *spareBitValue = nullptr;
+  unsigned resultOffset = 0;
+  llvm::Value *result = nullptr;
   auto destTy = llvm::IntegerType::get(IGF.IGM.getLLVMContext(), bitWidth);
+  // TODO(mundaym): reverse PayloadValues on big-endian systems? Or perhaps gather in reverse?
   for (auto &pv : PayloadValues) {
-    // If this value is zero, it has nothing to add to the spare bits.
+    if (resultOffset >= bitWidth) {
+      // no more bits required
+      break;
+    }
+
     auto v = pv.dyn_cast<llvm::Value*>();
-    if (!v) {
-      payloadOffset += DL.getTypeSizeInBits(pv.get<llvm::Type*>());
+    unsigned size = DL.getTypeSizeInBits(v ? v->getType()
+                                           : pv.get<llvm::Type*>());
+    unsigned offset = payloadOffset;
+    if (!IGF.IGM.Triple.isLittleEndian()) {
+      offset = mask.getBitWidth() - payloadOffset - size;
+    }
+    payloadOffset += size;
+
+    // Slice the mask.
+    auto maskPart = mask.extractBits(size, offset);
+    if (maskPart == 0) {
+      // mask has no set bits
       continue;
     }
-    
-    unsigned size = DL.getTypeSizeInBits(v->getType());
-    // Slice the spare bit vector.
-    // FIXME: this is inefficient.
-    auto spareBitsPart = SpareBitVector::getConstant(size, false);
-    unsigned numBitsInPart = 0;
-    for (unsigned i = 0; i < size; ++i)
-      if (spareBits[payloadOffset + i]) {
-        spareBitsPart.setBit(i);
-        ++numBitsInPart;
-      }
-    
-    payloadOffset += size;
-    
-    // If there were no spare bits in this part, it has nothing to add.
-    if (numBitsInPart == 0)
-      continue;
-    
-    if (firstBitOffset >= bitWidth)
-      break;
 
-    // Get the spare bits from this part.
-    auto bits = irgen::emitGatherBits(IGF, spareBitsPart.asAPInt(),
-                                      v, firstBitOffset, bitWidth);
-    firstBitOffset += numBitsInPart;
-    
-    // Accumulate it into the full set.
-    if (!spareBitValue)
-      spareBitValue = bits;
-    else
-      spareBitValue = IGF.Builder.CreateOr(spareBitValue, bits);
+    // Gather and accumulate bits from this part if it is non-zero.
+    if (v) {
+      auto bits = irgen::emitGatherBits(IGF, maskPart, v,
+                                        resultOffset, bitWidth);
+      result = result ? IGF.Builder.CreateOr(result, bits) : bits;
+    }
+
+    // Increment bit offset.
+    resultOffset += maskPart.countPopulation();
   }
-  if (!spareBitValue)
+  if (!result) {
     return llvm::ConstantInt::get(destTy, 0);
-  return spareBitValue;
+  }
+  return result;
 }

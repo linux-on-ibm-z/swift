@@ -3493,7 +3493,7 @@ namespace {
 
       // Get the tag bits from spare bits, if any.
       if (numSpareBits > 0) {
-        tag = payload.emitGatherSpareBits(IGF, PayloadTagBits, 0, numTagBits);
+        tag = payload.emitGatherBits(IGF, PayloadTagBits.asAPInt(), numTagBits);
       }
 
       // Get the extra tag bits, if any.
@@ -3711,8 +3711,8 @@ namespace {
       OccupiedBits.flipAll();
 
       // Load the payload value, to distinguish no-payload cases.
-      llvm::Value *payloadValue = payload.emitGatherSpareBits(
-          IGF, OccupiedBits, 0, 32);
+      llvm::Value *payloadValue = payload.emitGatherBits(
+          IGF, OccupiedBits.asAPInt(), 32);
 
       llvm::Value *currentCase;
 
@@ -5110,7 +5110,7 @@ namespace {
       if (CommonSpareBits.count()) {
         auto payload = EnumPayload::load(IGF, projectPayload(IGF, src),
                                          PayloadSchema);
-        tag = payload.emitGatherSpareBits(IGF, CommonSpareBits, 0, 32);
+        tag = payload.emitGatherBits(IGF, CommonSpareBits.asAPInt(), 32);
         
         // If there are common spare bits we didn't use for tags, rotate the
         // tag value so that the used tag bits are at the bottom. This will
