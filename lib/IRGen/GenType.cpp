@@ -240,12 +240,12 @@ llvm::Value *FixedTypeInfo::isDynamicallyPackedInline(IRGenFunction &IGF,
 }
 
 unsigned FixedTypeInfo::getSpareBitExtraInhabitantCount() const {
-  if (SpareBits.none())
+  if (!SpareBits || SpareBits.getValue() == 0)
     return 0;
   // Make sure the arithmetic below doesn't overflow.
   if (getFixedSize().getValue() >= 4)
     return ValueWitnessFlags::MaxNumExtraInhabitants;
-  unsigned spareBitCount = SpareBits.count();
+  unsigned spareBitCount = SpareBits.getValue().countPopulation();
   assert(spareBitCount <= getFixedSize().getValueInBits()
          && "more spare bits than storage bits?!");
   unsigned inhabitedBitCount = getFixedSize().getValueInBits() - spareBitCount;
@@ -255,18 +255,23 @@ unsigned FixedTypeInfo::getSpareBitExtraInhabitantCount() const {
 }
 
 void FixedTypeInfo::applyFixedSpareBitsMask(SpareBitVector &mask) const {
+  auto spare = SpareBitVector();
+  if (SpareBits) {
+    spare = SpareBitVector::fromAPInt(SpareBits.getValue());
+  }
+
   // If the mask is no longer than the stored spare bits, we can just
   // apply the stored spare bits.
-  if (mask.size() <= SpareBits.size()) {
+  if (mask.size() <= spare.size()) {
     // Grow the mask out if necessary; the tail padding is all spare bits.
-    mask.extendWithSetBits(SpareBits.size());
-    mask &= SpareBits;
+    mask.extendWithSetBits(spare.size());
+    mask &= spare;
     return;
   }
 
   // Otherwise, we have to grow out the stored spare bits before we
   // can intersect.
-  auto paddedSpareBits = SpareBits;
+  auto paddedSpareBits = spare;
   paddedSpareBits.extendWithSetBits(mask.size());
   mask &= paddedSpareBits;
 }
@@ -275,12 +280,15 @@ APInt
 FixedTypeInfo::getSpareBitFixedExtraInhabitantValue(IRGenModule &IGM,
                                                     unsigned bits,
                                                     unsigned index) const {
+  assert(SpareBits && "no spare bits");
+  const auto &spareBits = SpareBits.getValue();
+
   // Factor the index into the part that goes in the occupied bits and the
   // part that goes in the spare bits.
   unsigned occupiedIndex, spareIndex = 0;
   
-  unsigned spareBitCount = SpareBits.count();
-  unsigned occupiedBitCount = SpareBits.size() - spareBitCount;
+  unsigned spareBitCount = spareBits.countPopulation();
+  unsigned occupiedBitCount = spareBits.getBitWidth() - spareBitCount;
   
   if (occupiedBitCount >= 31) {
     occupiedIndex = index;
@@ -294,7 +302,7 @@ FixedTypeInfo::getSpareBitFixedExtraInhabitantValue(IRGenModule &IGM,
     spareIndex = (index >> occupiedBitCount) + 1;
   }
 
-  APInt mask = SpareBits.asAPInt().zextOrTrunc(bits);
+  APInt mask = spareBits.zextOrTrunc(bits);
   APInt v = scatterBits(mask, spareIndex);
   v |= scatterBits(~mask, occupiedIndex);
   return v;
@@ -303,7 +311,7 @@ FixedTypeInfo::getSpareBitFixedExtraInhabitantValue(IRGenModule &IGM,
 llvm::Value *
 FixedTypeInfo::getSpareBitExtraInhabitantIndex(IRGenFunction &IGF,
                                                Address src) const {
-  assert(!SpareBits.none() && "no spare bits");
+  assert(SpareBits && SpareBits.getValue() != 0 && "no spare bits");
   
   auto &C = IGF.IGM.getLLVMContext();
   
@@ -314,8 +322,7 @@ FixedTypeInfo::getSpareBitExtraInhabitantIndex(IRGenFunction &IGF,
   
   // If the spare bits are all zero, then we have a valid value and not an
   // extra inhabitant.
-  auto spareBitsMask
-    = llvm::ConstantInt::get(C, SpareBits.asAPInt());
+  auto spareBitsMask = llvm::ConstantInt::get(C, SpareBits.getValue());
   auto valSpareBits = IGF.Builder.CreateAnd(val, spareBitsMask);
   auto isValid = IGF.Builder.CreateICmpEQ(valSpareBits,
                                           llvm::ConstantInt::get(payloadTy, 0));
@@ -329,17 +336,15 @@ FixedTypeInfo::getSpareBitExtraInhabitantIndex(IRGenFunction &IGF,
   ConditionalDominanceScope condition(IGF);
   
   // Gather the occupied bits.
-  auto OccupiedBits = SpareBits;
-  OccupiedBits.flipAll();
-  llvm::Value *idx = emitGatherBits(IGF, OccupiedBits.asAPInt(), val, 0, 31);
+  llvm::Value *idx = emitGatherBits(IGF, ~SpareBits.getValue(), val, 0, 31);
   
   // See if spare bits fit into the 31 bits of the index.
-  unsigned numSpareBits = SpareBits.count();
+  unsigned numSpareBits = SpareBits.getValue().countPopulation();
   unsigned numOccupiedBits = getFixedSize().getValueInBits() - numSpareBits;
   if (numOccupiedBits < 31) {
     // Gather the spare bits.
     llvm::Value *spareIdx
-      = emitGatherBits(IGF, SpareBits.asAPInt(), val, numOccupiedBits, 31);
+      = emitGatherBits(IGF, SpareBits.getValue(), val, numOccupiedBits, 31);
     // Unbias by subtracting one.
 
     uint64_t shifted = static_cast<uint64_t>(1) << numOccupiedBits;
@@ -801,14 +806,14 @@ void
 FixedTypeInfo::storeSpareBitExtraInhabitant(IRGenFunction &IGF,
                                             llvm::Value *index,
                                             Address dest) const {
-  assert(!SpareBits.none() && "no spare bits");
+  assert(SpareBits && SpareBits.getValue() != 0 && "no spare bits");
   
   auto &C = IGF.IGM.getLLVMContext();
 
   auto payloadTy = llvm::IntegerType::get(C, getFixedSize().getValueInBits());
 
-  unsigned spareBitCount = SpareBits.count();
-  unsigned occupiedBitCount = SpareBits.size() - spareBitCount;
+  unsigned spareBitCount = SpareBits.getValue().countPopulation();
+  unsigned occupiedBitCount = SpareBits.getValue().getBitWidth() - spareBitCount;
   llvm::Value *occupiedIndex;
   llvm::Value *spareIndex;
   
@@ -833,12 +838,11 @@ FixedTypeInfo::storeSpareBitExtraInhabitant(IRGenFunction &IGF,
   }
   
   // Scatter the occupied bits.
-  auto OccupiedBits = ~SpareBits.asAPInt();
-  llvm::Value *occupied = emitScatterBits(IGF, OccupiedBits,
+  llvm::Value *occupied = emitScatterBits(IGF, ~SpareBits.getValue(),
                                           occupiedIndex, 0);
   
   // Scatter the spare bits.
-  llvm::Value *spare = emitScatterBits(IGF, SpareBits.asAPInt(),
+  llvm::Value *spare = emitScatterBits(IGF, SpareBits.getValue(),
                                        spareIndex, 0);
   
   // Combine the values and store to the destination.

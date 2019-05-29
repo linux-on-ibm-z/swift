@@ -37,17 +37,19 @@ class FixedTypeInfo : public TypeInfo {
 private:
   /// The spare bit mask for this type. SpareBits[0] is the LSB of the first
   /// byte. This may be empty if the type has no spare bits.
-  SpareBitVector SpareBits;
-  
+  llvm::Optional<llvm::APInt> SpareBits;
+
 protected:
   FixedTypeInfo(llvm::Type *type, Size size,
                 const SpareBitVector &spareBits,
                 Alignment align, IsPOD_t pod, IsBitwiseTakable_t bt,
                 IsFixedSize_t alwaysFixedSize,
                 SpecialTypeInfoKind stik = SpecialTypeInfoKind::Fixed)
-      : TypeInfo(type, align, pod, bt, alwaysFixedSize, IsABIAccessible, stik),
-        SpareBits(spareBits) {
-    assert(SpareBits.size() == size.getValueInBits());
+      : TypeInfo(type, align, pod, bt, alwaysFixedSize, IsABIAccessible, stik) {
+    if (spareBits.size() != 0) {
+      SpareBits = spareBits.asAPInt();
+    }
+    assert(!SpareBits || SpareBits.getValue().getBitWidth() == size.getValueInBits());
     assert(isFixedSize());
     Bits.FixedTypeInfo.Size = size.getValue();
     assert(Bits.FixedTypeInfo.Size == size.getValue() && "truncation");
@@ -58,9 +60,11 @@ protected:
                 Alignment align, IsPOD_t pod, IsBitwiseTakable_t bt,
                 IsFixedSize_t alwaysFixedSize,
                 SpecialTypeInfoKind stik = SpecialTypeInfoKind::Fixed)
-      : TypeInfo(type, align, pod, bt, alwaysFixedSize, IsABIAccessible, stik),
-        SpareBits(std::move(spareBits)) {
-    assert(SpareBits.size() == size.getValueInBits());
+      : TypeInfo(type, align, pod, bt, alwaysFixedSize, IsABIAccessible, stik) {
+    if (spareBits.size() != 0) {
+      SpareBits = spareBits.asAPInt();
+    }
+    assert(!SpareBits || SpareBits.getValue().getBitWidth() == size.getValueInBits());
     assert(isFixedSize());
     Bits.FixedTypeInfo.Size = size.getValue();
     assert(Bits.FixedTypeInfo.Size == size.getValue() && "truncation");
@@ -193,13 +197,18 @@ public:
                                     Address dest) const;
   
   /// Get the spare bit mask for the type.
-  const SpareBitVector &getSpareBits() const { return SpareBits; }
+  SpareBitVector getSpareBits() const {
+    if (SpareBits) {
+      return SpareBitVector::fromAPInt(SpareBits.getValue());
+    }
+    return SpareBitVector();
+  }
   
   /// True if the type representation has statically "spare" unused bits.
   bool hasFixedSpareBits() const {
-    return SpareBits.any();
+    return SpareBits && SpareBits.getValue() != 0;
   }
-  
+
   /// Applies the fixed spare bits mask for this type to the given BitVector,
   /// clearing any bits used by valid representations of the type.
   ///
