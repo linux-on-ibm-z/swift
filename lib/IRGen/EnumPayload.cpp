@@ -722,43 +722,39 @@ llvm::Value *
 EnumPayload::emitGatherBits(IRGenFunction &IGF,
                             const llvm::APInt &mask,
                             unsigned bitWidth) const {
+  // TODO(mundaym): what are the semantics on big-endian platforms when the number of set bits in mask is greater than bitWidth?
+
   auto &DL = IGF.IGM.DataLayout;
   unsigned payloadOffset = 0;
-  unsigned resultOffset = 0;
+  // Gather in reverse on big-endian systems.
+  unsigned resultOffset = IGF.IGM.Triple.isLittleEndian() ? 0 : mask.countPopulation();
   llvm::Value *result = nullptr;
   auto destTy = llvm::IntegerType::get(IGF.IGM.getLLVMContext(), bitWidth);
-  // TODO(mundaym): reverse PayloadValues on big-endian systems? Or perhaps gather in reverse?
   for (auto &pv : PayloadValues) {
-    if (resultOffset >= bitWidth) {
-      // no more bits required
-      break;
-    }
-
     auto v = pv.dyn_cast<llvm::Value*>();
     unsigned size = DL.getTypeSizeInBits(v ? v->getType()
                                            : pv.get<llvm::Type*>());
-    unsigned offset = payloadOffset;
-    if (!IGF.IGM.Triple.isLittleEndian()) {
-      offset = mask.getBitWidth() - payloadOffset - size;
-    }
-    payloadOffset += size;
 
     // Slice the mask.
-    auto maskPart = mask.extractBits(size, offset);
+    auto maskPart = sliceInt(IGF.IGM, mask, payloadOffset, size);
+    payloadOffset += size;
     if (maskPart == 0) {
       // mask has no set bits
       continue;
     }
 
     // Gather and accumulate bits from this part if it is non-zero.
-    if (v) {
+    if (!IGF.IGM.Triple.isLittleEndian()) {
+      resultOffset -= maskPart.countPopulation();
+    }
+    if (v && resultOffset < bitWidth) {
       auto bits = irgen::emitGatherBits(IGF, maskPart, v,
                                         resultOffset, bitWidth);
       result = result ? IGF.Builder.CreateOr(result, bits) : bits;
     }
-
-    // Increment bit offset.
-    resultOffset += maskPart.countPopulation();
+    if (IGF.IGM.Triple.isLittleEndian()) {
+      resultOffset += maskPart.countPopulation();
+    }
   }
   if (!result) {
     return llvm::ConstantInt::get(destTy, 0);
