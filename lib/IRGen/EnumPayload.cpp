@@ -48,18 +48,34 @@ EnumPayload EnumPayload::zero(IRGenModule &IGM, EnumPayloadSchema schema) {
 }
 
 EnumPayload EnumPayload::fromBitPattern(IRGenModule &IGM,
-                                        APInt bitPattern,
+                                        const APInt &bitPattern,
                                         EnumPayloadSchema schema) {
   EnumPayload result;
-  
+
+  // On little-endian machines the first byte corresponds to the LSB
+  // of the bit pattern whereas on big-endian machines the first byte
+  // corresponds to the MSB of the bit pattern. We therefore slice
+  // the bit pattern backwards on big-endian machines.
+  unsigned offset = IGM.Triple.isLittleEndian() ? 0U : bitPattern.getBitWidth();
+
   schema.forEachType(IGM, [&](llvm::Type *type) {
     unsigned bitSize = IGM.DataLayout.getTypeSizeInBits(type);
 
     llvm::IntegerType *intTy
       = llvm::IntegerType::get(IGM.getLLVMContext(), bitSize);
-    
-    // Take some bits off of the bottom of the pattern.
-    auto bits = bitPattern.zextOrTrunc(bitSize);
+
+    // Slice out the bits that match the offset of this payload value.
+    // The bitPattern is in target byte order so we need to take the
+    // target's endianness into account when slicing.
+    if (!IGM.Triple.isLittleEndian()) {
+      offset -= bitSize; // big-endian: MSB -> LSB
+    }
+    auto bits = bitPattern.extractBits(bitSize, offset);
+    if (IGM.Triple.isLittleEndian()) {
+      offset += bitSize; // little-endian: MSB <- LSB
+    }
+
+    // Convert the constant to the correct type.
     auto val = llvm::ConstantInt::get(intTy, bits);
     if (val->getType() != type) {
       if (type->isPointerTy())
@@ -67,13 +83,22 @@ EnumPayload EnumPayload::fromBitPattern(IRGenModule &IGM,
       else
         val = llvm::ConstantExpr::getBitCast(val, type);
     }
-    
+
+    // Append value to the result.
     result.PayloadValues.push_back(val);
-    
-    // Shift the remaining bits down.
-    bitPattern = bitPattern.lshr(bitSize);
   });
-    
+
+  // Assert that we have consumed the entire bit pattern.
+  if (offset == 0) {
+    // APInts must be at least 1-bit wide whereas our schema might
+    // be 0-bits wide.
+    assert(bitPattern.getBitWidth() == 1);
+  } else if (IGM.Triple.isLittleEndian()) {
+    assert(offset == bitPattern.getBitWidth());
+  } else {
+    assert(offset == 0);
+  }
+
   return result;
 }
 

@@ -95,7 +95,7 @@ public:
 
   /// Generate an enum payload containing the given bit pattern.
   static EnumPayload fromBitPattern(IRGenModule &IGM,
-                                    APInt bitPattern,
+                                    const APInt &bitPattern,
                                     EnumPayloadSchema schema);
   
   /// Insert a value into the enum payload.
