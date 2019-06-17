@@ -19,6 +19,8 @@
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "swift/ABI/MetadataValues.h"
+
+#include "APInt.h"
 #include "Explosion.h"
 #include "ExtraInhabitants.h"
 #include "GenType.h"
@@ -100,10 +102,10 @@ public:
     return getHeapObjectExtraInhabitantIndex(IGF, src);
   }
   APInt getFixedExtraInhabitantMask(IRGenModule &IGM) const override {
-    auto pointerSize = IGM.getPointerSize().getValueInBits();
-    APInt bits = APInt::getAllOnesValue(pointerSize);
-    bits = bits.zext(pointerSize * 2);
-    return bits;
+    auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
+    builder.appendOnes(IGM.getPointerSize().getValueInBits());
+    builder.appendZeros(IGM.getPointerSize().getValueInBits());
+    return builder.build().getValue();
   }
   void storeExtraInhabitant(IRGenFunction &IGF, llvm::Value *index,
                             Address dest, SILType T,

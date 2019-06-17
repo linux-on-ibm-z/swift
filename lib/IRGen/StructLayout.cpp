@@ -363,24 +363,9 @@ void StructLayoutBuilder::setAsBodyOfStruct(llvm::StructType *type) const {
 
 /// Return the spare bit mask of the structure built so far.
 SpareBitVector StructLayoutBuilder::getSpareBits() const {
-  // Calculate the size up front to reduce possible allocations.
-  unsigned numBits = 0;
-  for (auto &v : CurSpareBits) {
-    numBits += v.size();
+  auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
+  for (const auto &v : CurSpareBits) {
+    builder.append(v);
   }
-  if (numBits == 0) {
-    return SpareBitVector();
-  }
-  // Assemble the spare bit mask.
-  auto mask = llvm::APInt::getNullValue(numBits);
-  unsigned offset = 0;
-  for (auto &v : CurSpareBits) {
-    if (v.size() == 0) {
-      continue;
-    }
-    mask.insertBits(v.asAPInt(), offset);
-    offset += v.size();
-  }
-  assert(offset == numBits);
-  return SpareBitVector::fromAPInt(std::move(mask));
+  return builder.build();
 }
