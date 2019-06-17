@@ -88,6 +88,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/ADT/StringSwitch.h"
 
+#include "APInt.h"
 #include "Callee.h"
 #include "ConstantBuilder.h"
 #include "EnumPayload.h"
@@ -345,10 +346,10 @@ namespace {
 
     APInt getFixedExtraInhabitantMask(IRGenModule &IGM) const override {
       // Only the function pointer value is used for extra inhabitants.
-      auto pointerSize = IGM.getPointerSize().getValueInBits();
-      APInt bits = APInt::getAllOnesValue(pointerSize);
-      bits = bits.zext(pointerSize * 2);
-      return bits;
+      auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
+      builder.appendOnes(IGM.getPointerSize().getValueInBits());
+      builder.appendZeros(IGM.getPointerSize().getValueInBits());
+      return builder.build().getValue();
     }
 
     void storeExtraInhabitant(IRGenFunction &IGF, llvm::Value *index,
@@ -438,8 +439,8 @@ const TypeInfo *TypeConverter::convertBlockStorageType(SILBlockStorageType *T) {
   Size captureOffset(
     IGM.DataLayout.getStructLayout(IGM.ObjCBlockStructTy)->getSizeInBytes());
   Size size = captureOffset;
-  SpareBitVector spareBits =
-    SpareBitVector::getConstant(size.getValueInBits(), false);
+  auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
+  builder.appendZeros(size.getValueInBits());
   IsPOD_t pod = IsNotPOD;
   IsBitwiseTakable_t bt = IsNotBitwiseTakable;
   if (!fixedCapture) {
@@ -449,18 +450,22 @@ const TypeInfo *TypeConverter::convertBlockStorageType(SILBlockStorageType *T) {
     fixedCaptureTy = cast<FixedTypeInfo>(capture).getStorageType();
     align = std::max(align, fixedCapture->getFixedAlignment());
     captureOffset = captureOffset.roundUpToAlignment(align);
-    spareBits.extendWithSetBits(captureOffset.getValueInBits());
+    builder.appendOnes(captureOffset.getValueInBits() - size.getValueInBits());
     size = captureOffset + fixedCapture->getFixedSize();
-    spareBits.append(fixedCapture->getSpareBits());
+    builder.append(fixedCapture->getSpareBits());
     pod = fixedCapture->isPOD(ResilienceExpansion::Maximal);
     bt = fixedCapture->isBitwiseTakable(ResilienceExpansion::Maximal);
   }
-  
+  SpareBitVector spareBits;
+  if (auto mask = builder.build()) {
+    spareBits = SpareBitVector::fromAPInt(std::move(mask.getValue()));
+  }
+
   llvm::Type *storageElts[] = {
     IGM.ObjCBlockStructTy,
     fixedCaptureTy,
   };
-  
+
   auto storageTy = llvm::StructType::get(IGM.getLLVMContext(), storageElts,
                                          /*packed*/ false);
   return new BlockStorageTypeInfo(storageTy, size, align, std::move(spareBits),
