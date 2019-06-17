@@ -609,9 +609,8 @@ llvm::Value *irgen::getFixedTypeEnumTagSinglePayload(IRGenFunction &IGF,
   if (fixedSize > Size(0)) {
     // Read up to one pointer-sized 'chunk' of the payload.
     // The size of the chunk does not have to be a power of 2.
-    Size limit = IGM.getPointerSize();
     auto *caseIndexType = llvm::IntegerType::get(Ctx,
-        std::min(limit, fixedSize).getValueInBits());
+        fixedSize.getValueInBits());
     auto *caseIndexAddr = Builder.CreateBitCast(valueAddr,
         caseIndexType->getPointerTo());
     caseIndexFromValue = Builder.CreateZExtOrTrunc(
@@ -774,21 +773,10 @@ void irgen::storeFixedTypeEnumTagSinglePayload(IRGenFunction &IGF,
     // Write the value into the first pointer-sized (or smaller)
     // 'chunk' of the payload.
     // The size of the chunk does not have to be a power of 2.
-    Size limit = IGM.getPointerSize();
-    auto *chunkType = Builder.getIntNTy(
-        std::min(fixedSize, limit).getValueInBits());
+    auto *chunkType = Builder.getIntNTy(fixedSize.getValueInBits());
     Builder.CreateStore(
         Builder.CreateZExtOrTrunc(payloadIndex, chunkType),
         Builder.CreateBitCast(valueAddr, chunkType->getPointerTo()));
-
-    // Zero the remainder of the payload.
-    if (fixedSize > limit) {
-      auto zeroAddr = Builder.CreateConstByteArrayGEP(valueAddr, limit);
-      auto zeroSize = Builder.CreateSub(
-          size,
-          llvm::ConstantInt::get(size->getType(), limit.getValue()));
-      Builder.CreateMemSet(zeroAddr, Builder.getInt8(0), zeroSize);
-    }
   }
   // Write to the extra tag bytes, if any.
   emitSetTag(IGF, extraTagBitsAddr, extraTagIndex, numExtraTagBytes);

@@ -95,9 +95,13 @@ public:
 
   /// Generate an enum payload containing the given bit pattern.
   static EnumPayload fromBitPattern(IRGenModule &IGM,
-                                    APInt bitPattern,
+                                    const APInt &bitPattern,
                                     EnumPayloadSchema schema);
-  
+
+  /// Get the total size of the payload in bits. Guaranteed to be a
+  /// multiple of 8.
+  unsigned sizeInBits(const IRGenFunction &IGF) const;
+
   /// Insert a value into the enum payload.
   ///
   /// The current payload value at the given offset is assumed to be zero.
@@ -105,8 +109,7 @@ public:
   /// that need storing in \p value otherwise the full bit-width of \p value
   /// will be stored.
   void insertValue(IRGenFunction &IGF,
-                   llvm::Value *value, unsigned bitOffset,
-                   int numBitsUsedInValue = -1);
+                   llvm::Value *value, unsigned bitOffset);
   
   /// Extract a value from the enum payload.
   llvm::Value *extractValue(IRGenFunction &IGF,
@@ -147,14 +150,14 @@ public:
   
   /// Emit an equality comparison operation that payload & mask == value.
   llvm::Value *emitCompare(IRGenFunction &IGF,
-                           APInt mask,
-                           APInt value) const;
+                           const APInt &mask,
+                           const APInt &value) const;
   
   /// Apply an AND mask to the payload.
-  void emitApplyAndMask(IRGenFunction &IGF, APInt mask);
+  void emitApplyAndMask(IRGenFunction &IGF, const APInt &mask);
   
   /// Apply an OR mask to the payload.
-  void emitApplyOrMask(IRGenFunction &IGF, APInt mask);
+  void emitApplyOrMask(IRGenFunction &IGF, const APInt &mask);
   
   /// Apply an OR mask to the payload.
   void emitApplyOrMask(IRGenFunction &IGF, EnumPayload mask);
@@ -164,6 +167,10 @@ public:
                                    const SpareBitVector &spareBits,
                                    unsigned firstBitOffset,
                                    unsigned bitWidth) const;
+private:
+  /// Calculate the total number of bits this payload requires.
+  /// This will always be a multiple of 8.
+  unsigned getAllocSizeInBits(const llvm::DataLayout &DL) const;
 };
   
 }
