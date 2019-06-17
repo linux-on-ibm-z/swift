@@ -16,6 +16,7 @@
 
 #include "ExtraInhabitants.h"
 
+#include "APInt.h"
 #include "IRGenModule.h"
 #include "IRGenFunction.h"
 #include "SwiftTargetInfo.h"
@@ -68,12 +69,15 @@ getPointerFixedExtraInhabitantValue(const IRGenModule &IGM, unsigned bits,
                                     unsigned numReservedLowBits) {
   assert(index < getPointerExtraInhabitantCount(IGM, numReservedLowBits) &&
          "pointer extra inhabitant out of bounds");
+  assert(bits >= 64 /* TODO: pointer size */ + offset);
+
   uint64_t value = (uint64_t)index << numReservedLowBits;
-  APInt apValue(bits, value);
-  if (offset > 0)
-    apValue = apValue.shl(offset);
-  
-  return apValue;
+
+  auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
+  builder.appendZeros(offset);
+  builder.append(APInt(64 /* TODO: pointer size */, value));
+  builder.appendZeros(bits - offset - 64);
+  return builder.build().getValue();
 }
 
 APInt irgen::getHeapObjectFixedExtraInhabitantValue(const IRGenModule &IGM,
