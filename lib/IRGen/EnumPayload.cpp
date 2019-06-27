@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "APInt.h"
 #include "EnumPayload.h"
 #include "Explosion.h"
 #include "GenEnum.h"
@@ -20,71 +21,6 @@ using namespace swift;
 using namespace irgen;
 
 // FIXME: Everything here brazenly assumes little-endian-ness.
-
-/// APIntReader allows an APInt to be read from in chunks. Chunks may
-/// be read starting from either the least significant bit
-/// (little-endian) or the most significant bit (big-endian).
-///
-/// This is useful when interpreting an APInt as a multi-byte mask
-/// that needs to be applied to a composite value in memory.
-///
-/// Example:
-///
-///   // big-endian
-///   auto x = APIntReader(APInt(32, 0x1234), false);
-///   x.read(16) // 0x12
-///   x.read(8)  // 0x3
-///   x.read(8)  // 0x4
-///
-///   // little-endian
-///   auto y = APIntReader(APInt(32, 0x1234), true);
-///   y.read(16) // 0x34
-///   y.read(8)  // 0x2
-///   y.read(8)  // 0x1
-///
-class APIntReader {
-  const APInt Value;
-  const bool LittleEndian;
-  unsigned Offset;
-public:
-  /// If the reader is in little-endian mode then bits will be read
-  /// from the least significant to the most significant. Otherwise
-  /// they will be read from the most significant to the least
-  /// significant.
-  APIntReader(const APInt &value, bool littleEndian) :
-      Value(value),
-      LittleEndian(littleEndian),
-      Offset(0) {}
-
-  /// Read the given number of bits from the unread part of the
-  /// underlying value and adjust the remaining value as appropriate.
-  APInt read(unsigned numBits) {
-    assert(Value.getBitWidth() >= Offset + numBits);
-    unsigned offset = Offset;
-    if (!LittleEndian) {
-      offset = Value.getBitWidth() - offset - numBits;
-    }
-    Offset += numBits;
-    return Value.extractBits(numBits, offset);
-  }
-
-  // Skip the number of bits provided.
-  void skip(unsigned numBits) {
-    assert(Value.getBitWidth() >= Offset + numBits);
-    Offset += numBits;
-  }
-
-  /// Return a copy of the unread part of the value.
-  APInt remainder() const {
-    assert(Value.getBitWidth() > Offset && "no remainder");
-    unsigned numBits = Value.getBitWidth() - Offset;
-    unsigned offset = Offset;
-    if (!LittleEndian) {
-      offset = Value.getBitWidth() - offset - numBits;
-    }
-    return Value.extractBits(numBits, offset);
-  }
-};
 
 static llvm::Value *forcePayloadValue(EnumPayload::LazyValue &value) {
   if (auto v = value.dyn_cast<llvm::Value *>())

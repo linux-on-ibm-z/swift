@@ -3201,23 +3201,24 @@ namespace {
     getBitPatternForNoPayloadElement(EnumElementDecl *theCase) const override {
       APInt payloadPart, extraPart;
       std::tie(payloadPart, extraPart) = getNoPayloadCaseValue(theCase);
-      ClusteredBitVector bits;
-
+      auto builder = APIntBuilder(true /* little-endian */);
       if (PayloadBitCount > 0)
-        bits = getBitVectorFromAPInt(payloadPart);
+        builder.append(payloadPart);
 
-      unsigned totalSize
-        = cast<FixedTypeInfo>(TI)->getFixedSize().getValueInBits();
+      Size size = cast<FixedTypeInfo>(TI)->getFixedSize();
       if (ExtraTagBitCount > 0) {
-        ClusteredBitVector extraBits = getBitVectorFromAPInt(extraPart,
-                                                             bits.size());
-        bits.extendWithClearBits(totalSize);
-        extraBits.extendWithClearBits(totalSize);
-        bits |= extraBits;
-      } else {
-        assert(totalSize == bits.size());
+        auto paddedWidth = size.getValueInBits() - PayloadBitCount;
+        auto extraPadded = extraPart.zextOrSelf(paddedWidth);
+        builder.append(std::move(extraPadded));
       }
-      return bits;
+
+      if (auto result = builder.build()) {
+        auto &v = result.getValue();
+        assert(size.getValueInBits() == v.getBitWidth());
+        return ClusteredBitVector::fromAPInt(std::move(v));
+      }
+      assert(size == Size(0));
+      return {};
     }
 
     ClusteredBitVector
@@ -5346,8 +5347,6 @@ namespace {
     getBitPatternForNoPayloadElement(EnumElementDecl *theCase) const override {
       assert(TIK >= Fixed);
 
-      APInt payloadPart, extraPart;
-
       auto emptyI = std::find_if(ElementsWithNoPayload.begin(),
                                  ElementsWithNoPayload.end(),
                            [&](const Element &e) { return e.decl == theCase; });
@@ -5355,24 +5354,26 @@ namespace {
 
       unsigned index = emptyI - ElementsWithNoPayload.begin();
 
+      APInt payloadPart, extraPart;
       std::tie(payloadPart, extraPart) = getNoPayloadCaseValue(index);
-      ClusteredBitVector bits;
+      auto builder = APIntBuilder(true /* little-endian */);
+      if (PayloadBitCount > 0)
+        builder.append(payloadPart);
 
-      if (!CommonSpareBits.empty())
-        bits = getBitVectorFromAPInt(payloadPart);
-
-      unsigned totalSize
-        = cast<FixedTypeInfo>(TI)->getFixedSize().getValueInBits();
+      Size size = cast<FixedTypeInfo>(TI)->getFixedSize();
       if (ExtraTagBitCount > 0) {
-        ClusteredBitVector extraBits =
-          getBitVectorFromAPInt(extraPart, bits.size());
-        bits.extendWithClearBits(totalSize);
-        extraBits.extendWithClearBits(totalSize);
-        bits |= extraBits;
-      } else {
-        assert(totalSize == bits.size());
+        auto paddedWidth = size.getValueInBits() - PayloadBitCount;
+        auto extraPadded = extraPart.zextOrSelf(paddedWidth);
+        builder.append(std::move(extraPadded));
       }
-      return bits;
+
+      if (auto result = builder.build()) {
+        auto &v = result.getValue();
+        assert(size.getValueInBits() == v.getBitWidth());
+        return ClusteredBitVector::fromAPInt(std::move(v));
+      }
+      assert(size == Size(0));
+      return {};
     }
 
     ClusteredBitVector
@@ -5388,19 +5389,30 @@ namespace {
 
     ClusteredBitVector getTagBitsForPayloads() const override {
       assert(TIK >= Fixed);
-      
-      ClusteredBitVector result = PayloadTagBits;
+      Size size = cast<FixedTypeInfo>(TI)->getFixedSize();
 
-      unsigned totalSize
-        = cast<FixedTypeInfo>(TI)->getFixedSize().getValueInBits();
-
-      if (ExtraTagBitCount) {
-        result.appendSetBits(ExtraTagBitCount);
-        result.extendWithClearBits(totalSize);
-      } else {
-        assert(PayloadTagBits.size() == totalSize);
+      if (ExtraTagBitCount == 0) {
+        assert(PayloadTagBits.size() == size.getValueInBits());
+        return PayloadTagBits;
       }
-      return result;
+
+      // Build a mask containing the tag bits for the payload and those
+      // spilled into the extra tag.
+      auto builder = APIntBuilder(true /* little-endian */);
+      if (!PayloadTagBits.empty())
+        builder.append(PayloadTagBits.asAPInt());
+
+      // Set tag bits in extra tag to 1.
+      unsigned extraTagSize = size.getValueInBits() - PayloadTagBits.size();
+      builder.append(APInt(extraTagSize, (1U << ExtraTagBitCount) - 1U));
+
+      if (auto result = builder.build()) {
+        auto &v = result.getValue();
+        return ClusteredBitVector::fromAPInt(std::move(v));
+      }
+      // unreachable
+      assert(size == Size(0));
+      return {};
     }
   };
 
