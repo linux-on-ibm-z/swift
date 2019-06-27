@@ -22,6 +22,7 @@
 #include "swift/Basic/ClusteredBitVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Twine.h"
+#include "APInt.h"
 #include "IRGen.h"
 
 namespace llvm {
