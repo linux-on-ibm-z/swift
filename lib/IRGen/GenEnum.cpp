@@ -6378,11 +6378,18 @@ TypeInfo *SinglePayloadEnumImplStrategy::completeFixedLayout(
   // sets to be able to reason about how many spare bits from the payload type
   // we can forward. If we spilled tag bits, however, we can offer the unused
   // bits we have in that byte.
-  SpareBitVector spareBits;
-  spareBits.appendClearBits(payloadTI.getFixedSize().getValueInBits());
+  auto builder = APIntBuilder(true /* little-endian */);
+  if (auto size = payloadTI.getFixedSize().getValueInBits()) {
+    builder.appendZeros(size);
+  }
   if (ExtraTagBitCount > 0) {
-    spareBits.appendClearBits(ExtraTagBitCount);
-    spareBits.appendSetBits(extraTagByteCount * 8 - ExtraTagBitCount);
+    auto paddedSize = extraTagByteCount * 8;
+    builder.append(APInt::getBitsSetFrom(paddedSize, ExtraTagBitCount));
+  }
+  auto spareBits = SpareBitVector();
+  if (auto spareBitMask = builder.build()) {
+    auto &v = spareBitMask.getValue();
+    spareBits = SpareBitVector::fromAPInt(std::move(v));
   }
   
   auto alignment = payloadTI.getFixedAlignment();
