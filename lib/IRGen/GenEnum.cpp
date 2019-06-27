@@ -6283,16 +6283,15 @@ NoPayloadEnumImplStrategy::completeEnumTypeLayout(TypeConverter &TC,
   // Unused tag bits in the physical size can be used as spare bits.
   // TODO: We can use all values greater than the largest discriminator as
   // extra inhabitants, not just those made available by spare bits.
-  SpareBitVector spareBits;
-  spareBits.appendClearBits(usedTagBits);
-  spareBits.extendWithSetBits(tagSize.getValueInBits());
+  auto spareBits = SpareBitVector::fromAPInt(
+      APInt::getBitsSetFrom(tagSize.getValueInBits(), usedTagBits));
 
   Alignment alignment(tagSize.getValue());
   applyLayoutAttributes(TC.IGM, theEnum, /*fixed*/true, alignment);
 
   return registerEnumTypeInfo(new LoadableEnumTypeInfo(*this,
-                                   enumTy, tagSize, std::move(spareBits),
-                                   alignment, IsPOD, AlwaysFixedSize));
+                              enumTy, tagSize, std::move(spareBits),
+                              alignment, IsPOD, AlwaysFixedSize));
 }
 
 TypeInfo *
