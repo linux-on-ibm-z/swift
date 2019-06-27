@@ -3259,21 +3259,24 @@ namespace {
 
     ClusteredBitVector getTagBitsForPayloads() const override {
       // We only have tag bits if we spilled extra bits.
-      ClusteredBitVector result;
-      unsigned payloadSize
-        = getFixedPayloadTypeInfo().getFixedSize().getValueInBits();
-      result.appendClearBits(payloadSize);
+      auto builder = APIntBuilder(true /* little-endian */);
+      Size payloadSize = getFixedPayloadTypeInfo().getFixedSize();
+      builder.appendZeros(payloadSize.getValueInBits());
 
-      unsigned totalSize
-        = cast<FixedTypeInfo>(TI)->getFixedSize().getValueInBits();
-
+      Size totalSize = cast<FixedTypeInfo>(TI)->getFixedSize();
       if (ExtraTagBitCount) {
-        result.appendSetBits(ExtraTagBitCount);
-        result.extendWithClearBits(totalSize);
+        Size extraTagSize = totalSize - payloadSize;
+        builder.append(APInt(extraTagSize.getValueInBits(),
+                             (1U << ExtraTagBitCount) - 1));
       } else {
         assert(payloadSize == totalSize);
       }
-      return result;
+      if (auto result = builder.build()) {
+        auto &v = result.getValue();
+        return ClusteredBitVector::fromAPInt(std::move(v));
+      }
+      assert(totalSize == Size(0));
+      return {};
     }
   };
 
