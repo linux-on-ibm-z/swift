@@ -142,17 +142,6 @@ static llvm::Constant *emitEnumLayoutFlags(IRGenModule &IGM, bool isVWTMutable){
   return IGM.getSize(Size(uintptr_t(flags)));
 }
 
-static SpareBitVector
-getBitVectorFromAPInt(const APInt &bits, unsigned startBit = 0) {
-  if (startBit == 0) {
-    return SpareBitVector::fromAPInt(bits);
-  }
-  SpareBitVector result;
-  result.appendClearBits(startBit);
-  result.append(SpareBitVector::fromAPInt(bits));
-  return result;
-}
-
 static IsABIAccessible_t
 areElementsABIAccessible(ArrayRef<EnumImplStrategy::Element> elts) {
   for (auto &elt : elts) {
@@ -981,10 +970,9 @@ namespace {
 
     ClusteredBitVector
     getBitPatternForNoPayloadElement(EnumElementDecl *theCase) const override {
-      auto bits
-        = getBitVectorFromAPInt(getDiscriminatorIdxConst(theCase)->getValue());
-      bits.extendWithClearBits(cast<FixedTypeInfo>(TI)->getFixedSize().getValueInBits());
-      return bits;
+      Size size = cast<FixedTypeInfo>(TI)->getFixedSize();
+      auto val = getDiscriminatorIdxConst(theCase)->getValue();
+      return ClusteredBitVector::fromAPInt(val.zextOrSelf(size.getValueInBits()));
     }
 
     ClusteredBitVector
@@ -3248,8 +3236,8 @@ namespace {
         extraInhabitantsMaskInt = extraDiscriminatorBits;
       }
       auto extraInhabitantsMask
-        = getBitVectorFromAPInt(extraInhabitantsMaskInt);
-      
+        = ClusteredBitVector::fromAPInt(extraInhabitantsMaskInt);
+
       // Extend to include the extra tag bits, which are always significant.
       unsigned totalSize
         = cast<FixedTypeInfo>(TI)->getFixedSize().getValueInBits();
