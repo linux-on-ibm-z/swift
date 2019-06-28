@@ -3213,36 +3213,26 @@ namespace {
     getBitMaskForNoPayloadElements() const override {
       // Use the extra inhabitants mask from the payload.
       auto &payloadTI = getFixedPayloadTypeInfo();
-      APInt extraInhabitantsMaskInt;
 
-      // If we used extra inhabitants from the payload, then we can use the
-      // payload's mask to find the bits we need to test.
-      auto extraDiscriminatorBits = (~APInt(8, 0));
-      if (payloadTI.getFixedSize().getValueInBits() != 0)
-        extraDiscriminatorBits =
-          extraDiscriminatorBits.zextOrTrunc(
-              payloadTI.getFixedSize().getValueInBits());
-      if (getNumExtraInhabitantTagValues() > 0) {
-        extraInhabitantsMaskInt = payloadTI.getFixedExtraInhabitantMask(IGM);
-        // If we have more no-payload cases than extra inhabitants, also
-        // mask in up to four bytes for discriminators we generate using
-        // extra tag bits.
-        if (ExtraTagBitCount > 0) {
-          extraInhabitantsMaskInt |= extraDiscriminatorBits;
-        }
-      } else {
-        // If we only use extra tag bits, then we need that extra tag plus
-        // up to four bytes of discriminator.
-        extraInhabitantsMaskInt = extraDiscriminatorBits;
+      Size size = cast<FixedTypeInfo>(TI)->getFixedSize();
+      auto builder = APIntBuilder(true /* little-endian */);
+      if (Size payloadSize = payloadTI.getFixedSize()) {
+        auto payloadMask = APInt::getNullValue(payloadSize.getValueInBits());
+        if (getNumExtraInhabitantTagValues() > 0)
+          payloadMask |= payloadTI.getFixedExtraInhabitantMask(IGM);
+        if (ExtraTagBitCount > 0)
+          payloadMask |= 0xffffffffULL;
+        builder.append(std::move(payloadMask));
+        size -= payloadSize;
       }
-      auto extraInhabitantsMask
-        = ClusteredBitVector::fromAPInt(extraInhabitantsMaskInt);
-
-      // Extend to include the extra tag bits, which are always significant.
-      unsigned totalSize
-        = cast<FixedTypeInfo>(TI)->getFixedSize().getValueInBits();
-      extraInhabitantsMask.extendWithSetBits(totalSize);
-      return extraInhabitantsMask;
+      if (ExtraTagBitCount > 0) {
+        builder.appendOnes(size.getValueInBits());
+      }
+      if (auto result = builder.build()) {
+        auto &v = result.getValue();
+        return ClusteredBitVector::fromAPInt(std::move(v));
+      }
+      return {};
     }
 
     ClusteredBitVector getTagBitsForPayloads() const override {
