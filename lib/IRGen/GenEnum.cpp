@@ -6546,12 +6546,22 @@ MultiPayloadEnumImplStrategy::completeFixedLayout(TypeConverter &TC,
   if (numTagBits >= commonSpareBitCount) {
     PayloadTagBits = CommonSpareBits;
 
+    auto builder = APIntBuilder(true /* little-endian */);
     // We're using all of the common spare bits as tag bits, so none
     // of them are spare; nor are the extra tag bits.
-    spareBits.appendClearBits(CommonSpareBits.size() + ExtraTagBitCount);
+    builder.appendZeros(CommonSpareBits.size());
 
     // The remaining bits in the extra tag bytes are spare.
-    spareBits.appendSetBits(extraTagByteCount * 8 - ExtraTagBitCount);
+    if (ExtraTagBitCount) {
+      builder.append(APInt::getBitsSetFrom(extraTagByteCount * 8,
+                                           ExtraTagBitCount));
+    }
+
+    // Set the spare bit mask.
+    if (auto o = builder.build()) {
+      auto &v = o.getValue();
+      spareBits = SpareBitVector::fromAPInt(std::move(v));
+    }
 
   // Otherwise, we need to construct a new bitset that doesn't
   // include the bits we aren't using.
