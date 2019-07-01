@@ -12,6 +12,8 @@
 
 #pragma once
 
+#include "swift/Basic/ClusteredBitVector.h"
+
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
@@ -66,6 +68,13 @@ public:
       offset += e.getBitWidth();
     }
     return result;
+  }
+
+  ClusteredBitVector buildBitVector() {
+    if (auto result = build()) {
+      return ClusteredBitVector::fromAPInt(std::move(result.getValue()));
+    }
+    return {};
   }
 };
 
