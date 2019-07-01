@@ -369,8 +369,7 @@ SpareBitVector StructLayoutBuilder::getSpareBits() const {
       builder.append(v.asAPInt());
     }
   }
-  auto result = builder.build();
-  if (result) {
+  if (auto result = builder.build()) {
      return SpareBitVector::fromAPInt(std::move(result.getValue()));
   }
   return {};
