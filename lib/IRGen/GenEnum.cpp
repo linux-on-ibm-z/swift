@@ -6446,11 +6446,21 @@ MultiPayloadEnumImplStrategy::completeFixedLayout(TypeConverter &TC,
   // See if the payload types have any spare bits in common.
   // At the end of the loop CommonSpareBits.size() will be the size (in bits)
   // of the largest payload.
-  CommonSpareBits = {};
+  PayloadSize = 0;
+  for (const auto &elt : ElementsWithPayload) {
+    auto &fixedPayloadTI = cast<FixedTypeInfo>(*elt.ti);
+    PayloadSize = std::max(PayloadSize,
+                           unsigned(fixedPayloadTI.getFixedSize().getValue()));
+  }
+
+  auto commonSpareBits = llvm::Optional<APInt>();
+  if (PayloadSize > 0) {
+    commonSpareBits = APInt::getAllOnesValue(PayloadSize * 8);
+  }
+
   Alignment worstAlignment(1);
   IsPOD_t isPOD = IsPOD;
   IsBitwiseTakable_t isBT = IsBitwiseTakable;
-  PayloadSize = 0;
   for (auto &elt : ElementsWithPayload) {
     auto &fixedPayloadTI = cast<FixedTypeInfo>(*elt.ti);
     if (fixedPayloadTI.getFixedAlignment() > worstAlignment)
@@ -6460,11 +6470,8 @@ MultiPayloadEnumImplStrategy::completeFixedLayout(TypeConverter &TC,
     if (!fixedPayloadTI.isBitwiseTakable(ResilienceExpansion::Maximal))
       isBT = IsNotBitwiseTakable;
 
-    unsigned payloadBytes = fixedPayloadTI.getFixedSize().getValue();
-    unsigned payloadBits = fixedPayloadTI.getFixedSize().getValueInBits();
-
-    if (payloadBytes > PayloadSize)
-      PayloadSize = payloadBytes;
+    if (PayloadSize == 0)
+      continue;
 
     // See what spare bits from the payload we can use for layout optimization.
 
@@ -6472,8 +6479,7 @@ MultiPayloadEnumImplStrategy::completeFixedLayout(TypeConverter &TC,
     // if the type is layout-dependent. (Even when the runtime does, it will
     // likely only track a subset of the spare bits.)
     if (!AllowFixedLayoutOptimizations || TIK < Loadable) {
-      if (CommonSpareBits.size() < payloadBits)
-        CommonSpareBits.extendWithClearBits(payloadBits);
+      commonSpareBits.getValue().clearAllBits();
       continue;
     }
 
@@ -6484,9 +6490,14 @@ MultiPayloadEnumImplStrategy::completeFixedLayout(TypeConverter &TC,
     // class-bound archetype. These do not have any spare bits because
     // they can contain Obj-C tagged pointers. To handle this case
     // correctly, we get spare bits from the unsubstituted type.
-    auto &fixedOrigTI = cast<FixedTypeInfo>(*elt.origTI);
-    fixedOrigTI.applyFixedSpareBitsMask(CommonSpareBits);
+    auto spareBits = cast<FixedTypeInfo>(*elt.origTI).getSpareBits().asAPInt();
+    spareBits = spareBits.zextOrSelf(PayloadSize * 8);
+    spareBits.setBitsFrom(cast<FixedTypeInfo>(*elt.origTI).getFixedSize().getValueInBits());
+    commonSpareBits.getValue() &= spareBits;
   }
+
+  if (PayloadSize > 0)
+    CommonSpareBits = ClusteredBitVector::fromAPInt(commonSpareBits.getValue());
 
   unsigned commonSpareBitCount = CommonSpareBits.count();
   unsigned usedBitCount = CommonSpareBits.size() - commonSpareBitCount;
