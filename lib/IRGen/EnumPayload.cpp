@@ -586,6 +586,7 @@ EnumPayload::emitGatherSpareBits(IRGenFunction &IGF,
   auto destTy = llvm::IntegerType::get(IGF.IGM.getLLVMContext(), bitWidth);
   auto spareBitReader =
       APIntReader(spareBits.asAPInt(), IGF.IGM.Triple.isLittleEndian());
+  auto usedBits = firstBitOffset;
 
   for (auto &pv : PayloadValues) {
     // If this value is zero, it has nothing to add to the spare bits.
@@ -604,13 +605,17 @@ EnumPayload::emitGatherSpareBits(IRGenFunction &IGF,
     if (numBitsInPart == 0)
       continue;
 
-    if (firstBitOffset >= bitWidth)
+    if (usedBits >= bitWidth)
       break;
 
+    unsigned offset = usedBits;
+    if (IGF.IGM.Triple.isLittleEndian()) {
+      offset = bitWidth - usedBits - size;
+    }
     // Get the spare bits from this part.
     auto bits = irgen::emitGatherBits(IGF, spareBitsPart,
-                                      v, firstBitOffset, bitWidth);
-    firstBitOffset += numBitsInPart;
+                                      v, offset, bitWidth);
+    usedBits += numBitsInPart;
 
     // Accumulate it into the full set.
     if (spareBitValue) {

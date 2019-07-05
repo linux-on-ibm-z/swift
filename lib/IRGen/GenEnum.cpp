@@ -7001,13 +7001,21 @@ EnumPayload irgen::interleaveSpareBits(IRGenFunction &IGF,
                                        const EnumPayloadSchema &schema,
                                        const SpareBitVector &spareBitVector,
                                        llvm::Value *value) {
+  auto &DL = IGF.IGM.DataLayout;
+  auto &builder = IGF.Builder;
+  auto &context = IGF.IGM.getLLVMContext();
+
   EnumPayload result;
   auto spareBitReader = APIntReader(spareBitVector.asAPInt(),
                                     IGF.IGM.Triple.isLittleEndian());
 
+  unsigned valueSize = spareBitVector.count();
+  if (valueSize != cast<llvm::IntegerType>(value->getType())->getBitWidth()) {
+    auto valueTy = llvm::IntegerType::get(context, valueSize);
+    value = builder.CreateZExtOrTrunc(value, valueTy);
+  }
   unsigned usedBits = 0;
 
-  auto &DL = IGF.IGM.DataLayout;
   schema.forEachType(IGF.IGM, [&](llvm::Type *type) {
     unsigned bitSize = DL.getTypeSizeInBits(type);
 
@@ -7019,8 +7027,12 @@ EnumPayload irgen::interleaveSpareBits(IRGenFunction &IGF,
     } else {
       // TODO: assumes little-endian - usedBits offset needs to be
       // changed on big-endian systems.
+      unsigned offset = usedBits;
+      if (!IGF.IGM.Triple.isLittleEndian()) {
+        offset = valueSize - offset - bitSize;
+      }
       auto payloadValue = emitScatterBits(IGF, spareBitsChunk,
-                                          value, usedBits);
+                                          value, offset);
       if (payloadValue->getType() != type) {
         if (type->isPointerTy())
           payloadValue = IGF.Builder.CreateIntToPtr(payloadValue, type);
