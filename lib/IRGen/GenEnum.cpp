@@ -3190,7 +3190,7 @@ namespace {
     getBitPatternForNoPayloadElement(EnumElementDecl *theCase) const override {
       APInt payloadPart, extraPart;
       std::tie(payloadPart, extraPart) = getNoPayloadCaseValue(theCase);
-      auto builder = APIntBuilder(true /* little-endian */);
+      auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
       if (PayloadBitCount > 0)
         builder.append(payloadPart);
 
@@ -3216,7 +3216,7 @@ namespace {
       auto &payloadTI = getFixedPayloadTypeInfo();
 
       Size size = cast<FixedTypeInfo>(TI)->getFixedSize();
-      auto builder = APIntBuilder(true /* little-endian */);
+      auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
       if (Size payloadSize = payloadTI.getFixedSize()) {
         auto payloadMask = APInt::getNullValue(payloadSize.getValueInBits());
         if (getNumExtraInhabitantTagValues() > 0)
@@ -3238,7 +3238,7 @@ namespace {
 
     ClusteredBitVector getTagBitsForPayloads() const override {
       // We only have tag bits if we spilled extra bits.
-      auto builder = APIntBuilder(true /* little-endian */);
+      auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
       Size payloadSize = getFixedPayloadTypeInfo().getFixedSize();
       builder.appendZeros(payloadSize.getValueInBits());
 
@@ -5338,7 +5338,7 @@ namespace {
 
       APInt payloadPart, extraPart;
       std::tie(payloadPart, extraPart) = getNoPayloadCaseValue(index);
-      auto builder = APIntBuilder(true /* little-endian */);
+      auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
       if (PayloadBitCount > 0)
         builder.append(payloadPart);
 
@@ -5380,7 +5380,7 @@ namespace {
 
       // Build a mask containing the tag bits for the payload and those
       // spilled into the extra tag.
-      auto builder = APIntBuilder(true /* little-endian */);
+      auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
       if (!PayloadTagBits.empty())
         builder.append(PayloadTagBits.asAPInt());
 
@@ -6369,7 +6369,7 @@ TypeInfo *SinglePayloadEnumImplStrategy::completeFixedLayout(
   // sets to be able to reason about how many spare bits from the payload type
   // we can forward. If we spilled tag bits, however, we can offer the unused
   // bits we have in that byte.
-  auto builder = APIntBuilder(true /* little-endian */);
+  auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
   if (auto size = payloadTI.getFixedSize().getValueInBits()) {
     builder.appendZeros(size);
   }
@@ -6548,7 +6548,7 @@ MultiPayloadEnumImplStrategy::completeFixedLayout(TypeConverter &TC,
   if (numTagBits >= commonSpareBitCount) {
     PayloadTagBits = CommonSpareBits;
 
-    auto builder = APIntBuilder(true /* little-endian */);
+    auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
     // We're using all of the common spare bits as tag bits, so none
     // of them are spare; nor are the extra tag bits.
     builder.appendZeros(CommonSpareBits.size());
@@ -7003,7 +7003,7 @@ EnumPayload irgen::interleaveSpareBits(IRGenFunction &IGF,
                                        llvm::Value *value) {
   EnumPayload result;
   auto spareBitReader = APIntReader(spareBitVector.asAPInt(),
-                                    true /* little-endian */);
+                                    IGF.IGM.Triple.isLittleEndian());
 
   unsigned usedBits = 0;
 

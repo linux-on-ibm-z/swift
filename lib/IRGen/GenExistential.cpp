@@ -1136,7 +1136,7 @@ public:
   const TypeInfo * \
   create##Name##StorageType(TypeConverter &TC, \
                             bool isOptional) const override { \
-    auto builder = APIntBuilder(true /* little-endian */); \
+    auto builder = APIntBuilder(TC.IGM.Triple.isLittleEndian()); \
     auto ref = TC.IGM.getReferenceStorageSpareBits( \
                                                    ReferenceOwnership::Name, \
                                                    Refcounting); \
@@ -1171,7 +1171,7 @@ public:
     auto ref = TC.IGM.getReferenceStorageSpareBits( \
                                                    ReferenceOwnership::Name, \
                                                    Refcounting); \
-    auto builder = APIntBuilder(true /* little-endian */); \
+    auto builder = APIntBuilder(TC.IGM.Triple.isLittleEndian()); \
     if (!ref.empty()) { \
       builder.append(ref.asAPInt()); \
     } \
@@ -1215,7 +1215,7 @@ public:
     auto ref = TC.IGM.getReferenceStorageSpareBits( \
                                                    ReferenceOwnership::Name, \
                                                    ReferenceCounting::Native); \
-    auto builder = APIntBuilder(true /* little-endian */); \
+    auto builder = APIntBuilder(TC.IGM.Triple.isLittleEndian()); \
     if (!ref.empty()) { \
       builder.append(ref.asAPInt()); \
     } \
@@ -1441,7 +1441,7 @@ static const TypeInfo *createExistentialTypeInfo(IRGenModule &IGM, CanType T) {
     Alignment align = IGM.getPointerAlignment();
     Size size = classFields.size() * IGM.getPointerSize();
 
-    auto builder = APIntBuilder(true /* little-endian */);
+    auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
 
     // The class pointer is an unknown heap object, so it may be a tagged
     // pointer, if the platform has those.
@@ -1518,7 +1518,7 @@ TypeConverter::convertExistentialMetatypeType(ExistentialMetatypeType *T) {
   auto &baseTI = cast<LoadableTypeInfo>(getMetatypeTypeInfo(T->getRepresentation()));
   fields.push_back(baseTI.getStorageType());
 
-  auto builder = APIntBuilder(true /* little-endian */);
+  auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
   auto baseSpareBits = baseTI.getSpareBits();
   if (!baseSpareBits.empty()) {
     builder.append(baseSpareBits.asAPInt());

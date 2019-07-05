@@ -51,7 +51,7 @@ EnumPayload EnumPayload::zero(IRGenModule &IGM, EnumPayloadSchema schema) {
 EnumPayload EnumPayload::fromBitPattern(IRGenModule &IGM,
                                         const APInt &bitPattern,
                                         EnumPayloadSchema schema) {
-  auto maskReader = APIntReader(bitPattern, true /* little-endian */);
+  auto maskReader = APIntReader(bitPattern, IGM.Triple.isLittleEndian());
 
   EnumPayload result;
   schema.forEachType(IGM, [&](llvm::Type *type) {
@@ -414,8 +414,8 @@ EnumPayload::emitCompare(IRGenFunction &IGF,
   assert((~mask & value) == 0
          && "value has masked out bits set?!");
 
-  auto valueReader = APIntReader(value, true /* little-endian */);
-  auto maskReader = APIntReader(mask, true /* little-endian */);
+  auto valueReader = APIntReader(value, IGF.IGM.Triple.isLittleEndian());
+  auto maskReader = APIntReader(mask, IGF.IGM.Triple.isLittleEndian());
 
   auto &DL = IGF.IGM.DataLayout;
   llvm::Value *condition = nullptr;
@@ -468,7 +468,7 @@ EnumPayload::emitApplyAndMask(IRGenFunction &IGF, const APInt &mask) {
   if (mask.isAllOnesValue())
     return;
 
-  auto maskReader = APIntReader(mask, true /* little-endian */);
+  auto maskReader = APIntReader(mask, IGF.IGM.Triple.isLittleEndian());
 
   auto &DL = IGF.IGM.DataLayout;
   for (auto &pv : PayloadValues) {
@@ -510,7 +510,7 @@ EnumPayload::emitApplyOrMask(IRGenFunction &IGF, const APInt &mask) {
   if (mask == 0)
     return;
 
-  auto maskReader = APIntReader(mask, true /* little-endian */);
+  auto maskReader = APIntReader(mask, IGF.IGM.Triple.isLittleEndian());
 
   auto &DL = IGF.IGM.DataLayout;
   for (auto &pv : PayloadValues) {
@@ -585,7 +585,7 @@ EnumPayload::emitGatherSpareBits(IRGenFunction &IGF,
   llvm::Value *spareBitValue = nullptr;
   auto destTy = llvm::IntegerType::get(IGF.IGM.getLLVMContext(), bitWidth);
   auto spareBitReader =
-      APIntReader(spareBits.asAPInt(), true /* little-endian */);
+      APIntReader(spareBits.asAPInt(), IGF.IGM.Triple.isLittleEndian());
 
   for (auto &pv : PayloadValues) {
     // If this value is zero, it has nothing to add to the spare bits.
