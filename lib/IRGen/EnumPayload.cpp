@@ -609,8 +609,8 @@ EnumPayload::emitGatherSpareBits(IRGenFunction &IGF,
       break;
 
     unsigned offset = usedBits;
-    if (IGF.IGM.Triple.isLittleEndian()) {
-      offset = bitWidth - usedBits - size;
+    if (!IGF.IGM.Triple.isLittleEndian()) {
+      offset = bitWidth - usedBits - numBitsInPart;
     }
     // Get the spare bits from this part.
     auto bits = irgen::emitGatherBits(IGF, spareBitsPart,
