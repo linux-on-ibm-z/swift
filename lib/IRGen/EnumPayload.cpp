@@ -124,9 +124,8 @@ static void withValueInPayload(IRGenFunction &IGF,
 }
 
 void EnumPayload::insertValue(IRGenFunction &IGF, llvm::Value *value,
-                              unsigned payloadOffset,
-                              int numBitsUsedInValue) {
-  withValueInPayload(IGF, *this, value->getType(), numBitsUsedInValue, payloadOffset,
+                              unsigned payloadOffset) {
+  withValueInPayload(IGF, *this, value->getType(), -1, payloadOffset,
     [&](LazyValue &payloadValue,
         unsigned payloadBitWidth,
         unsigned payloadValueOffset,
@@ -585,7 +584,8 @@ EnumPayload::emitGatherSpareBits(IRGenFunction &IGF,
   llvm::Value *spareBitValue = nullptr;
   auto destTy = llvm::IntegerType::get(IGF.IGM.getLLVMContext(), bitWidth);
   auto spareBitReader =
-      APIntReader(spareBits.asAPInt(), IGF.IGM.Triple.isLittleEndian());
+      APIntReader(getLowestNSetBits(spareBits.asAPInt(), bitWidth - firstBitOffset),
+		  IGF.IGM.Triple.isLittleEndian());
   auto usedBits = firstBitOffset;
 
   for (auto &pv : PayloadValues) {

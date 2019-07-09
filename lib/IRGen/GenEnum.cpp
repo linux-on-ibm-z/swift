@@ -4209,17 +4209,10 @@ namespace {
         payload = getEmptyCasePayload(IGF, tag, tagIndex);
       } else if (!CommonSpareBits.empty()) {
         // Otherwise the payload is just the index.
-        payload = EnumPayload::zero(IGM, PayloadSchema);
-        if (!IGF.IGM.Triple.isLittleEndian()) {
-          if (IGF.IGM.Triple.isArch64Bit() && numCaseBits >= 64) {
-            // Need to set the full 64-bit chunk on big-endian systems.
-            tagIndex = IGF.Builder.CreateZExt(tagIndex, IGM.SizeTy);
-          }
-	}
-        // We know we won't use more than numCaseBits from tagIndex's value:
-        // We made sure of this in the logic above.
-        payload.insertValue(IGF, tagIndex, 0,
-                            numCaseBits >= 32 ? -1 : numCaseBits);
+        auto mask = APInt::getLowBitsSet(numCaseBits, std::min(32U, numCaseBits));
+        payload = interleaveSpareBits(IGF, PayloadSchema,
+                                      SpareBitVector::fromAPInt(std::move(mask)),
+                                      tagIndex);
       }
 
       // If the tag bits do not fit in the spare bits, the remaining tag bits

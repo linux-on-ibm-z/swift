@@ -105,8 +105,7 @@ public:
   /// that need storing in \p value otherwise the full bit-width of \p value
   /// will be stored.
   void insertValue(IRGenFunction &IGF,
-                   llvm::Value *value, unsigned bitOffset,
-                   int numBitsUsedInValue = -1);
+                   llvm::Value *value, unsigned bitOffset);
   
   /// Extract a value from the enum payload.
   llvm::Value *extractValue(IRGenFunction &IGF,

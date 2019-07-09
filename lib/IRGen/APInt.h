@@ -134,6 +134,24 @@ public:
   }
 };
 
+static inline
+llvm::APInt getLowestNSetBits(llvm::APInt &&value, unsigned numSetBits) {
+  // TODO: optimize
+  for (unsigned i = 0; i < value.getBitWidth(); ++i) {
+    if (numSetBits == 0) {
+      value.clearBit(i);
+    } else if (value[i]) {
+      numSetBits -= 1;
+    }
+  }
+  return std::move(value);
+}
+
+static inline
+llvm::APInt getLowestNSetBits(const llvm::APInt &value, unsigned numSetBits) {
+  return getLowestNSetBits(llvm::APInt(value), numSetBits);
+}
+
 } // end namespace irgen
 } // end namespace swift
 
