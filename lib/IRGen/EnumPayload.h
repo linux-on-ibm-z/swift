@@ -97,7 +97,11 @@ public:
   static EnumPayload fromBitPattern(IRGenModule &IGM,
                                     const APInt &bitPattern,
                                     EnumPayloadSchema schema);
-  
+
+  /// Get the total size of the payload in bits. Guaranteed to be a
+  /// multiple of 8.
+  unsigned sizeInBits(const IRGenFunction &IGF) const;
+
   /// Insert a value into the enum payload.
   ///
   /// The current payload value at the given offset is assumed to be zero.

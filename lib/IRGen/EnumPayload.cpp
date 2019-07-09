@@ -76,6 +76,15 @@ EnumPayload EnumPayload::fromBitPattern(IRGenModule &IGM,
   return result;
 }
 
+unsigned EnumPayload::sizeInBits(const IRGenFunction &IGF) const {
+  unsigned size = 0U;
+  for (const auto &pv : PayloadValues) {
+    size += IGF.IGM.DataLayout.getTypeSizeInBits(getPayloadType(pv));
+    assert(size % 8 == 0);
+  }
+  return size;
+}
+
 // Fn: void(LazyValue &payloadValue, unsigned payloadBitWidth,
 //          unsigned payloadValueOffset, unsigned valueBitWidth,
 //          unsigned valueOffset)
@@ -196,67 +205,26 @@ void EnumPayload::insertValue(IRGenFunction &IGF, llvm::Value *value,
 
 llvm::Value *EnumPayload::extractValue(IRGenFunction &IGF, llvm::Type *type,
                                        unsigned payloadOffset) const {
-  llvm::Value *result = nullptr;
-  withValueInPayload(IGF, *this, type, -1, payloadOffset,
-    [&](LazyValue &payloadValue,
-        unsigned payloadBitWidth,
-        unsigned payloadValueOffset,
-        unsigned valueBitWidth,
-        unsigned valueOffset) {
-      auto payloadType = getPayloadType(payloadValue);
-      // If the desired type matches the payload slot exactly, we don't need
-      // to do anything.
-      if (payloadValueOffset == 0 && valueOffset == 0) {
-        if (type == payloadType) {
-          result = forcePayloadValue(payloadValue);
-          return;
-        }
-        // If only the width matches exactly, do a bitcast.
-        if (payloadBitWidth == valueBitWidth) {
-          result =
-            IGF.Builder.CreateBitOrPointerCast(forcePayloadValue(payloadValue),
-                                               type);
-          return;
-        }
-      }
-      
-      // Integrate the chunk of payload into the result value.
-      auto value = forcePayloadValue(payloadValue);
-      auto valueIntTy =
-        llvm::IntegerType::get(IGF.IGM.getLLVMContext(), valueBitWidth);
-      auto payloadIntTy =
-        llvm::IntegerType::get(IGF.IGM.getLLVMContext(), payloadBitWidth);
+  assert(payloadOffset % 8 == 0 && "payload offset must be byte aligned");
+  unsigned valueSize = IGF.IGM.DataLayout.getTypeSizeInBits(type);
+  unsigned payloadSize = sizeInBits(IGF);
+  assert(payloadSize >= valueSize + payloadOffset);
 
-      value = IGF.Builder.CreateBitOrPointerCast(value, payloadIntTy);
-      if (IGF.IGM.Triple.isLittleEndian()) {
-        if (payloadValueOffset > 0)
-          value = IGF.Builder.CreateLShr(value,
-                    llvm::ConstantInt::get(value->getType(), payloadValueOffset));
-      } else {
-        if ((valueBitWidth == 32 || valueBitWidth == 16 || valueBitWidth == 8 || valueBitWidth == 1) &&
-            payloadBitWidth > (payloadValueOffset + valueBitWidth)) {
-          unsigned shiftBitWidth = valueBitWidth;
-          if (valueBitWidth == 1) {
-            shiftBitWidth = 8;
-          }
-          value = IGF.Builder.CreateLShr(value,
-            llvm::ConstantInt::get(value->getType(), (payloadBitWidth - shiftBitWidth) - payloadValueOffset));
-        }
-      }
-      if (valueBitWidth > payloadBitWidth)
-        value = IGF.Builder.CreateZExt(value, valueIntTy);
-      if (valueOffset > 0)
-        value = IGF.Builder.CreateShl(value,
-                         llvm::ConstantInt::get(value->getType(), valueOffset));
-      if (valueBitWidth < payloadBitWidth)
-        value = IGF.Builder.CreateTrunc(value, valueIntTy);
-      
-      if (!result)
-        result = value;
-      else
-        result = IGF.Builder.CreateOr(result, value);
-    });
-  return IGF.Builder.CreateBitOrPointerCast(result, type);
+  auto mask = APInt::getBitsSet(payloadSize,
+                                payloadOffset,
+                                payloadOffset + valueSize);
+  if (!IGF.IGM.Triple.isLittleEndian()) {
+    // Reverse the mask on big-endian systems.
+    mask = mask.reverseBits();
+  }
+  auto value = emitGatherSpareBits(IGF,
+                                   SpareBitVector::fromAPInt(mask),
+                                   0,
+                                   valueSize);
+  if (value->getType() != type) {
+    value = IGF.Builder.CreateBitOrPointerCast(value, type);
+  }
+  return value;
 }
 
 EnumPayload EnumPayload::fromExplosion(IRGenModule &IGM,
