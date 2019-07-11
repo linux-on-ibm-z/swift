@@ -565,13 +565,14 @@ llvm::Value *
 EnumPayload::emitGatherSpareBits(IRGenFunction &IGF,
                                  const SpareBitVector &spareBits,
                                  unsigned firstBitOffset,
-                                 unsigned bitWidth) const {
+                                 unsigned resultBitWidth) const {
   auto &DL = IGF.IGM.DataLayout;
   llvm::Value *spareBitValue = nullptr;
-  auto destTy = llvm::IntegerType::get(IGF.IGM.getLLVMContext(), bitWidth);
-  auto spareBitReader =
-      APIntReader(getLowestNSetBits(spareBits.asAPInt(), bitWidth - firstBitOffset),
-		  IGF.IGM.Triple.isLittleEndian());
+  auto mask = getLowestNSetBits(spareBits.asAPInt(),
+                                resultBitWidth - firstBitOffset);
+  auto bitWidth = mask.countPopulation();
+  auto spareBitReader = APIntReader(std::move(mask),
+		                    IGF.IGM.Triple.isLittleEndian());
   auto usedBits = firstBitOffset;
 
   for (auto &pv : PayloadValues) {
@@ -609,7 +610,13 @@ EnumPayload::emitGatherSpareBits(IRGenFunction &IGF,
     }
     spareBitValue = bits;
   }
-  if (!spareBitValue)
+  auto destTy = llvm::IntegerType::get(IGF.IGM.getLLVMContext(),
+                                       resultBitWidth);
+  if (!spareBitValue) {
     return llvm::ConstantInt::get(destTy, 0);
+  }
+  if (resultBitWidth > bitWidth) {
+    return IGF.Builder.CreateZExt(spareBitValue, destTy);
+  }
   return spareBitValue;
 }
