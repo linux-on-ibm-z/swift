@@ -248,7 +248,10 @@ static unsigned loadMultiPayloadTag(const OpaqueValue *value,
                                     MultiPayloadLayout layout,
                                     unsigned baseValue = 0) {
   auto tagBytes = reinterpret_cast<const uint8_t *>(value) + layout.payloadSize;
-  return loadValue(tagBytes, layout.numTagBytes) + baseValue;
+  auto tag = loadValue(tagBytes, layout.numTagBytes);
+
+  // Replace out-of-range bytes with the base value.
+  return tag | (baseValue & (~0u << (layout.numTagBytes * 8)));
 }
 
 static unsigned loadMultiPayloadValue(const OpaqueValue *value,
