@@ -6913,6 +6913,9 @@ llvm::Value *irgen::emitScatterBits(IRGenFunction &IGF,
   // Expand or contract the packed bits to the destination type.
   auto bitSize = mask.getBitWidth();
   auto sourceTy = cast<llvm::IntegerType>(source->getType());
+  assert(packedLowBit < sourceTy->getBitWidth() &&
+      "packedLowBit out of range");
+
   auto destTy = llvm::IntegerType::get(context, bitSize);
   auto usedBits = int64_t(packedLowBit);
   if (usedBits > 0 && sourceTy->getBitWidth() > bitSize) {
@@ -7017,12 +7020,13 @@ EnumPayload irgen::interleaveSpareBits(IRGenFunction &IGF,
     // Take some bits off of the bottom of the pattern.
     auto spareBitsChunk = spareBitReader.read(bitSize);
 
-    if (spareBitsChunk.countPopulation() == 0) {
+    unsigned count = spareBitsChunk.countPopulation();
+    if (count == 0) {
       result.PayloadValues.push_back(type);
     } else {
       unsigned offset = usedBits;
       if (!IGF.IGM.Triple.isLittleEndian()) {
-        offset = valueSize - offset - bitSize;
+        offset = valueSize - offset - count;
       }
       auto payloadValue = emitScatterBits(IGF, spareBitsChunk,
                                           value, offset);
