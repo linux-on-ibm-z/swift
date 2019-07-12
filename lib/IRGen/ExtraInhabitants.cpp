@@ -67,16 +67,17 @@ static APInt
 getPointerFixedExtraInhabitantValue(const IRGenModule &IGM, unsigned bits,
                                     unsigned index, unsigned offset,
                                     unsigned numReservedLowBits) {
+  unsigned pointerSizeInBits = IGM.getPointerSize().getValueInBits();
   assert(index < getPointerExtraInhabitantCount(IGM, numReservedLowBits) &&
          "pointer extra inhabitant out of bounds");
-  assert(bits >= 64 /* TODO: pointer size */ + offset);
+  assert(bits >= pointerSizeInBits + offset);
 
   uint64_t value = (uint64_t)index << numReservedLowBits;
 
   auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
   builder.appendZeros(offset);
-  builder.append(APInt(64 /* TODO: pointer size */, value));
-  builder.appendZeros(bits - offset - 64);
+  builder.append(APInt(pointerSizeInBits, value));
+  builder.appendZeros(bits - offset - pointerSizeInBits);
   return builder.build().getValue();
 }
 
