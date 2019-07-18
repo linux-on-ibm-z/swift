@@ -4226,17 +4226,11 @@ namespace {
         payload = getEmptyCasePayload(IGF, tag, tagIndex);
       } else if (!CommonSpareBits.empty()) {
         // Otherwise the payload is just the index.
-        payload = EnumPayload::zero(IGM, PayloadSchema);
-        if (!IGF.IGM.Triple.isLittleEndian()) {
-          if (IGF.IGM.Triple.isArch64Bit() && numCaseBits >= 64) {
-            // Need to set the full 64-bit chunk on big-endian systems.
-            tagIndex = IGF.Builder.CreateZExt(tagIndex, IGM.SizeTy);
-          }
-	}
-        // We know we won't use more than numCaseBits from tagIndex's value:
-        // We made sure of this in the logic above.
-        payload.insertValue(IGF, tagIndex, 0,
-                            numCaseBits >= 32 ? -1 : numCaseBits);
+        auto mask = APInt::getLowBitsSet(CommonSpareBits.size(),
+                                         std::min(32U, numCaseBits));
+        payload = interleaveSpareBits(IGF, PayloadSchema,
+                                      SpareBitVector::fromAPInt(std::move(mask)),
+                                      tagIndex);
       }
 
       // If the tag bits do not fit in the spare bits, the remaining tag bits
@@ -6891,16 +6885,43 @@ llvm::Value *irgen::emitScatterBits(IRGenFunction &IGF,
                                     llvm::APInt mask,
                                     llvm::Value *source,
                                     unsigned packedLowBit) {
+  auto &DL = IGF.IGM.DataLayout;
   auto &builder = IGF.Builder;
   auto &context = IGF.IGM.getLLVMContext();
 
-  // Expand the packed bits to the destination type.
-  auto destTy = llvm::IntegerType::get(context, mask.getBitWidth());
-  source = builder.CreateZExtOrTrunc(source, destTy);
+  // Expand or contract the packed bits to the destination type.
+  auto bitSize = mask.getBitWidth();
+  auto sourceTy = dyn_cast<llvm::IntegerType>(source->getType());
+  if (!sourceTy) {
+    auto numBits = DL.getTypeSizeInBits(source->getType());
+    sourceTy = llvm::IntegerType::get(context, numBits);
+    source = builder.CreateBitOrPointerCast(source, sourceTy);
+  }
+  assert(packedLowBit < sourceTy->getBitWidth() &&
+      "packedLowBit out of range");
+
+  auto destTy = llvm::IntegerType::get(context, bitSize);
+  auto usedBits = int64_t(packedLowBit);
+  if (usedBits > 0 && sourceTy->getBitWidth() > bitSize) {
+    // Need to shift before truncation if the packed value is wider
+    // than the mask.
+    source = builder.CreateLShr(source, uint64_t(usedBits));
+    usedBits = 0;
+  }
+  if (sourceTy->getBitWidth() != bitSize) {
+    source = builder.CreateZExtOrTrunc(source, destTy);
+  }
+
+  // No need to AND with the mask if the whole source can just be
+  // shifted into place.
+  // TODO: could do more to avoid inserting unnecessary ANDs. For
+  // example we could take into account the packedLowBit.
+  auto unknownBits = std::min(sourceTy->getBitWidth(), bitSize);
+  bool needMask = !(mask.isShiftedMask() &&
+                    mask.countPopulation() >= unknownBits);
 
   // Shift each set of contiguous set bits into position and
   // accumulate them into the result.
-  int64_t usedBits = packedLowBit;
   llvm::Value *result = nullptr;
   while (mask != 0) {
     // Isolate the rightmost run of contiguous set bits.
@@ -6920,7 +6941,9 @@ llvm::Value *irgen::emitScatterBits(IRGenFunction &IGF,
     }
 
     // Mask out selected bits.
-    part = builder.CreateAnd(part, partMask);
+    if (needMask) {
+      part = builder.CreateAnd(part, partMask);
+    }
 
     // Accumulate the result.
     result = result ? builder.CreateOr(result, part) : part;
@@ -6970,46 +6993,11 @@ EnumPayload irgen::interleaveSpareBits(IRGenFunction &IGF,
                                        const EnumPayloadSchema &schema,
                                        const SpareBitVector &spareBitVector,
                                        llvm::Value *value) {
-  EnumPayload result;
-  APInt spareBits = spareBitVector.asAPInt();
-
-  unsigned usedBits = 0;
-
-  auto &DL = IGF.IGM.DataLayout;
-  schema.forEachType(IGF.IGM, [&](llvm::Type *type) {
-    unsigned bitSize = DL.getTypeSizeInBits(type);
-
-    // Take some bits off of the bottom of the pattern.
-    auto spareBitsChunk = SpareBitVector::fromAPInt(
-        spareBits.zextOrTrunc(bitSize));
-
-    if (usedBits >= 32 || spareBitsChunk.count() == 0) {
-      result.PayloadValues.push_back(type);
-    } else {
-      llvm::Value *payloadValue = value;
-      if (usedBits > 0) {
-        payloadValue = IGF.Builder.CreateLShr(payloadValue,
-                       llvm::ConstantInt::get(IGF.IGM.Int32Ty, usedBits));
-      }
-      payloadValue = emitScatterBits(IGF, spareBitsChunk.asAPInt(),
-                                     payloadValue, 0);
-      if (payloadValue->getType() != type) {
-        if (type->isPointerTy())
-          payloadValue = IGF.Builder.CreateIntToPtr(payloadValue, type);
-        else
-          payloadValue = IGF.Builder.CreateBitCast(payloadValue, type);
-      }
-
-      result.PayloadValues.push_back(payloadValue);
-    }
-    
-    // Shift the remaining bits down.
-    spareBits = spareBits.lshr(bitSize);
-
-    // Consume bits from the input value.
-    usedBits += spareBitsChunk.count();
-  });
-
+  EnumPayload result = EnumPayload::zero(IGF.IGM, schema);
+  if (spareBitVector.empty()) {
+    return result;
+  }
+  result.emitScatterBits(IGF, spareBitVector.asAPInt(), value);
   return result;
 }
 
