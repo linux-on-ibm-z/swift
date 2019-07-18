@@ -105,8 +105,7 @@ public:
   /// that need storing in \p value otherwise the full bit-width of \p value
   /// will be stored.
   void insertValue(IRGenFunction &IGF,
-                   llvm::Value *value, unsigned bitOffset,
-                   int numBitsUsedInValue = -1);
+                   llvm::Value *value, unsigned bitOffset);
   
   /// Extract a value from the enum payload.
   llvm::Value *extractValue(IRGenFunction &IGF,
@@ -158,7 +157,13 @@ public:
   
   /// Apply an OR mask to the payload.
   void emitApplyOrMask(IRGenFunction &IGF, EnumPayload mask);
-  
+
+  /// Scatter the bits in value to the bit positions indicated by the
+  /// mask.
+  void emitScatterBits(IRGenFunction &IGF,
+                       APInt mask,
+                       llvm::Value *value);
+
   /// Gather bits from an enum payload based on a spare bit mask.
   llvm::Value *emitGatherSpareBits(IRGenFunction &IGF,
                                    const SpareBitVector &spareBits,
