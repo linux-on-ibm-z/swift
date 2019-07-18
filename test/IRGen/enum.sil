@@ -1630,8 +1630,8 @@ sil @multi_payload_one_spare_bit_switch : $(MultiPayloadOneSpareBit) -> () {
 entry(%u : $MultiPayloadOneSpareBit):
 // CHECK-64:   [[NATIVECC_TRUNC:%.*]] = trunc i8 %1 to i1
 // CHECK-64:   [[SPARE_TAG_LSHR:%.*]] = lshr i64 %0, 63
-// CHECK-64:   [[SPARE_TAG_TRUNC:%.*]] = trunc i64 [[SPARE_TAG_LSHR]] to i8
-// CHECK-64:   [[SPARE_TAG:%.*]] = and i8 [[SPARE_TAG_TRUNC]], 1
+// CHECK-64:   [[SPARE_TAG_TRUNC:%.*]] = trunc i64 [[SPARE_TAG_LSHR]] to i1
+// CHECK-64:   [[SPARE_TAG:%.*]] = zext i1 [[SPARE_TAG_TRUNC]] to i8
 // CHECK-64:   [[EXTRA_TAG_ZEXT:%.*]] = zext i1 [[NATIVECC_TRUNC]] to i8
 // CHECK-64:   [[EXTRA_TAG:%.*]] = shl i8 [[EXTRA_TAG_ZEXT]], 1
 // CHECK-64:   [[TAG:%.*]] = or i8 [[SPARE_TAG]], [[EXTRA_TAG]]
@@ -1927,8 +1927,8 @@ enum MultiPayloadTwoSpareBits {
 sil @multi_payload_two_spare_bits_switch : $(MultiPayloadTwoSpareBits) -> () {
 entry(%u : $MultiPayloadTwoSpareBits):
 // CHECK-64:   [[TAG_LSHR:%.*]] = lshr i64 %0, 62
-// CHECK-64:   [[TAG_BYTE:%.*]] = trunc i64 [[TAG_LSHR]] to i8
-// CHECK-64:   [[TAG:%.*]] = and i8 [[TAG_BYTE]], 3
+// CHECK-64:   [[TAG_BYTE:%.*]] = trunc i64 [[TAG_LSHR]] to i2
+// CHECK-64:   [[TAG:%.*]] = zext i2 [[TAG_BYTE]] to i8
 // CHECK-64:   switch i8 [[TAG]], label %[[UNREACHABLE:[0-9]+]] [
 // CHECK-64:     i8 0, label %[[X_PREDEST:[0-9]+]]
 // CHECK-64:     i8 1, label %[[Y_PREDEST:[0-9]+]]
@@ -2155,8 +2155,8 @@ enum MultiPayloadClasses {
 
 // CHECK-64-LABEL: define{{( dllexport)?}}{{( protected)?}} swiftcc void @multi_payload_classes_switch(i64) {{.*}} {
 // CHECK-64:   %1 = lshr i64 %0, 62
-// CHECK-64:   %2 = trunc i64 %1 to i8
-// CHECK-64:   %3 = and i8 %2, 3
+// CHECK-64:   %2 = trunc i64 %1 to i2
+// CHECK-64:   %3 = zext i2 %2 to i8
 // CHECK-64:   switch i8 %3, label {{%.*}} [
 // CHECK-64:     i8 0, label {{%.*}}
 // CHECK-64:     i8 1, label {{%.*}}
@@ -2229,8 +2229,8 @@ enum MultiPayloadSpareBitAggregates {
 
 // CHECK-64-LABEL: define{{( dllexport)?}}{{( protected)?}} swiftcc void @multi_payload_spare_bit_aggregate_switch(i64, i64) {{.*}} {
 // CHECK-64:   [[T0:%.*]] = lshr i64 %0, 62
-// CHECK-64:   [[TAG_BYTE:%.*]] = trunc i64 [[T0]] to i8
-// CHECK-64:   [[TAG:%.*]] = and i8 [[TAG_BYTE]], 3
+// CHECK-64:   [[TAG_BYTE:%.*]] = trunc i64 [[T0]] to i2
+// CHECK-64:   [[TAG:%.*]] = zext i2 [[TAG_BYTE]] to i8
 // CHECK-64:   switch i8 [[TAG]], label {{%.*}} [
 // CHECK-64:     i8 0, label %[[X_DEST:[0-9]+]]
 // CHECK-64:     i8 1, label %[[Y_DEST:[0-9]+]]
@@ -2516,10 +2516,9 @@ entry(%x : $Int32):
   %c = tuple (%b : $Optional<()>, %x : $Int32)
   // CHECK-64: [[INT_ZEXT:%.*]] = zext i32 %0 to i64
   // CHECK-64: [[INT_SHL:%.*]] = shl i64 [[INT_ZEXT]], 32
-  // CHECK-64: [[COMBINE:%.*]] = or i64 0, [[INT_SHL]]
   %d = enum $Optional<(Optional<()>, Int32)>, #Optional.some!enumelt.1, %c : $(Optional<()>, Int32)
-  // CHECK-64: [[BIT:%.*]] = trunc i64 [[COMBINE]] to i1
-  // CHECK-64: [[INT_SHR:%.*]] = lshr i64 [[COMBINE]], 32
+  // CHECK-64: [[BIT:%.*]] = trunc i64 [[INT_SHL]] to i1
+  // CHECK-64: [[INT_SHR:%.*]] = lshr i64 [[INT_SHL]], 32
   // CHECK-64: [[INT:%.*]] = trunc i64 [[INT_SHR]] to i32
   %e = unchecked_enum_data %d : $Optional<(Optional<()>, Int32)>, #Optional.some!enumelt.1
   return %d : $Optional<(Optional<()>, Int32)>
@@ -2724,11 +2723,10 @@ entry(%x : $*MyOptional):
 // CHECK:  [[VAL05:%.*]] = load {{.*}} [[VAL04]]
 // CHECK:  [[VAL06:%.*]] = zext i8 [[VAL05]] to i32
 // CHECK:  [[VAL07:%.*]] = zext i8 [[VAL02]] to i32
-// CHECK:  [[VAL08:%.*]] = and i32 [[VAL07]], 255
-// CHECK:  [[VAL09:%.*]] = add i32 [[VAL08]], 2
-// CHECK:  [[VAL10:%.*]] = icmp uge i32 [[VAL06]], 2
-// CHECK:  [[VAL11:%.*]] = select i1 [[VAL10]], i32 [[VAL09]], i32 [[VAL06]]
-// CHECK:  ret i32 [[VAL11]]
+// CHECK:  [[VAL08:%.*]] = add i32 [[VAL07]], 2
+// CHECK:  [[VAL09:%.*]] = icmp uge i32 [[VAL06]], 2
+// CHECK:  [[VAL10:%.*]] = select i1 [[VAL09]], i32 [[VAL08]], i32 [[VAL06]]
+// CHECK:  ret i32 [[VAL10]]
 
 // CHECK-LABEL: define internal void @"$s4enum40MultiPayloadLessThan32BitsWithEmptyCasesOwui"(%swift.opaque* noalias %value, i32 %tag
 // CHECK: entry:
