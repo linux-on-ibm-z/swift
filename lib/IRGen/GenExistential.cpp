@@ -30,6 +30,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "APInt.h"
 #include "EnumPayload.h"
 #include "Explosion.h"
 #include "FixedTypeInfo.h"
@@ -583,8 +584,11 @@ namespace {
                               .getFixedExtraInhabitantMask(IGM);
 
       // Zext out to the size of the existential.
-      bits = bits.zextOrTrunc(asDerived().getFixedSize().getValueInBits());
-      return bits;
+      auto totalSize = asDerived().getFixedSize().getValueInBits();
+      auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
+      builder.append(bits);
+      builder.appendZeros(totalSize - bits.getBitWidth());
+      return builder.build().getValue();
     }
   };
 
@@ -649,8 +653,11 @@ namespace {
                                                      ReferenceOwnership::Name, \
                                                      Refcounting); \
         /* Zext out to the size of the existential. */ \
-        bits = bits.zextOrTrunc(getFixedSize().getValueInBits()); \
-        return bits; \
+        auto totalSize = getFixedSize().getValueInBits(); \
+        auto builder = APIntBuilder(IGM.Triple.isLittleEndian()); \
+        builder.append(bits); \
+        builder.appendZeros(totalSize - bits.getBitWidth()); \
+        return builder.build().getValue(); \
       } else { \
         return Super::getFixedExtraInhabitantMask(IGM); \
       } \
@@ -922,10 +929,15 @@ public:
     return getHeapObjectFixedExtraInhabitantValue(IGM, bits, index, offset);
   }
   APInt getFixedExtraInhabitantMask(IRGenModule &IGM) const override {
-    auto mask = APInt::getAllOnesValue(IGM.getPointerSize().getValueInBits());
-    mask = mask.zext(getFixedSize().getValueInBits());
-    mask = mask.shl(getLayout().getMetadataRefOffset(IGM).getValueInBits());
-    return mask;
+    auto metadataOffset = getLayout().getMetadataRefOffset(IGM).getValueInBits();
+    auto totalSize = getFixedSize().getValueInBits();
+    auto pointerSize = IGM.getPointerSize().getValueInBits();
+
+    auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
+    builder.appendZeros(metadataOffset);
+    builder.appendOnes(pointerSize);
+    builder.appendZeros(totalSize - metadataOffset - pointerSize);
+    return builder.build().getValue();
   }
   llvm::Value *getExtraInhabitantIndex(IRGenFunction &IGF,
                                        Address src, SILType T,
@@ -1135,17 +1147,20 @@ public:
   const TypeInfo * \
   create##Name##StorageType(TypeConverter &TC, \
                             bool isOptional) const override { \
-    auto spareBits = TC.IGM.getReferenceStorageSpareBits( \
-                                                     ReferenceOwnership::Name, \
-                                                     Refcounting); \
-    for (unsigned i = 0, e = getNumStoredProtocols(); i != e; ++i) \
-      spareBits.append(TC.IGM.getWitnessTablePtrSpareBits()); \
+    auto builder = APIntBuilder(TC.IGM.Triple.isLittleEndian()); \
+    auto ref = TC.IGM.getReferenceStorageSpareBits( \
+                                                   ReferenceOwnership::Name, \
+                                                   Refcounting); \
+    builder.append(ref); \
+    for (unsigned i = 0, e = getNumStoredProtocols(); i != e; ++i) { \
+      builder.append(TC.IGM.getWitnessTablePtrSpareBits()); \
+    } \
     auto storageTy = buildReferenceStorageType(TC.IGM, \
                               TC.IGM.Name##ReferencePtrTy->getElementType()); \
     return AddressOnly##Name##ClassExistentialTypeInfo::create( \
                                                  getStoredProtocols(), \
                                                  storageTy, \
-                                                 std::move(spareBits), \
+                                                 builder.build(), \
                                                  getFixedSize(), \
                                                  getFixedAlignment(), \
                                                  Refcounting, \
@@ -1157,18 +1172,21 @@ public:
   const TypeInfo * \
   create##Name##StorageType(TypeConverter &TC, \
                             bool isOptional) const override { \
-    auto spareBits = TC.IGM.getReferenceStorageSpareBits( \
-                                                     ReferenceOwnership::Name, \
-                                                     Refcounting); \
-    for (unsigned i = 0, e = getNumStoredProtocols(); i != e; ++i) \
-      spareBits.append(TC.IGM.getWitnessTablePtrSpareBits()); \
+    auto ref = TC.IGM.getReferenceStorageSpareBits( \
+                                                   ReferenceOwnership::Name, \
+                                                   Refcounting); \
+    auto builder = APIntBuilder(TC.IGM.Triple.isLittleEndian()); \
+    builder.append(ref); \
+    for (unsigned i = 0, e = getNumStoredProtocols(); i != e; ++i) { \
+      builder.append(TC.IGM.getWitnessTablePtrSpareBits()); \
+    } \
     auto storageTy = buildReferenceStorageType(TC.IGM, \
                               TC.IGM.Name##ReferencePtrTy->getElementType()); \
     if (TC.IGM.isLoadableReferenceAddressOnly(Refcounting)) { \
       return AddressOnly##Name##ClassExistentialTypeInfo::create( \
                                                    getStoredProtocols(), \
                                                    storageTy, \
-                                                   std::move(spareBits), \
+                                                   builder.build(), \
                                                    getFixedSize(), \
                                                    getFixedAlignment(), \
                                                    Refcounting, \
@@ -1178,7 +1196,7 @@ public:
                                                    getStoredProtocols(), \
                                                    getValueType(), \
                                                    storageTy, \
-                                                   std::move(spareBits), \
+                                                   builder.build(), \
                                                    getFixedSize(), \
                                                    getFixedAlignment(), \
                                                    Refcounting, \
@@ -1191,11 +1209,14 @@ public:
   create##Name##StorageType(TypeConverter &TC, \
                             bool isOptional) const override { \
     assert(Refcounting == ReferenceCounting::Native); \
-    auto spareBits = TC.IGM.getReferenceStorageSpareBits( \
+    auto ref = TC.IGM.getReferenceStorageSpareBits( \
                                                    ReferenceOwnership::Name, \
                                                    ReferenceCounting::Native); \
-    for (unsigned i = 0, e = getNumStoredProtocols(); i != e; ++i) \
-      spareBits.append(TC.IGM.getWitnessTablePtrSpareBits()); \
+    auto builder = APIntBuilder(TC.IGM.Triple.isLittleEndian()); \
+    builder.append(ref); \
+    for (unsigned i = 0, e = getNumStoredProtocols(); i != e; ++i) { \
+      builder.append(TC.IGM.getWitnessTablePtrSpareBits()); \
+    } \
     auto storageTy = buildReferenceStorageType(TC.IGM, \
                               TC.IGM.Name##ReferencePtrTy->getElementType()); \
     return Loadable##Name##ClassExistentialTypeInfo::create( \
@@ -1414,25 +1435,24 @@ static const TypeInfo *createExistentialTypeInfo(IRGenModule &IGM, CanType T) {
     Alignment align = IGM.getPointerAlignment();
     Size size = classFields.size() * IGM.getPointerSize();
 
-    SpareBitVector spareBits;
+    auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
 
     // The class pointer is an unknown heap object, so it may be a tagged
     // pointer, if the platform has those.
     if (allowsTaggedPointers &&
         refcounting != ReferenceCounting::Native &&
         IGM.TargetInfo.hasObjCTaggedPointers()) {
-      spareBits.appendClearBits(IGM.getPointerSize().getValueInBits());
+      builder.appendZeros(IGM.getPointerSize().getValueInBits());
     } else {
       // If the platform doesn't use ObjC tagged pointers, we can go crazy.
-      spareBits.append(IGM.getHeapObjectSpareBits());
+      builder.append(IGM.getHeapObjectSpareBits());
     }
 
     for (unsigned i = 1, e = classFields.size(); i < e; ++i) {
-      spareBits.append(IGM.getWitnessTablePtrSpareBits());
+      builder.append(IGM.getWitnessTablePtrSpareBits());
     }
-
     return ClassExistentialTypeInfo::create(protosWithWitnessTables, type,
-                                            size, std::move(spareBits), align,
+                                            size, builder.build(), align,
                                             refcounting);
   }
 
@@ -1446,23 +1466,11 @@ static const TypeInfo *createExistentialTypeInfo(IRGenModule &IGM, CanType T) {
   Size size = opaque.getSize(IGM);
   // There are spare bits in the metadata pointer and witness table pointers
   // consistent with a native object reference.
-  SpareBitVector spareBits;
-  spareBits.appendClearBits(size.getValueInBits());
-  /* TODO: There are spare bits we could theoretically use in the type metadata
-     and witness table pointers, but opaque existentials are currently address-
-     only, and we can't soundly take advantage of spare bits for in-memory
-     representations.
-   
-  auto metadataOffset = opaque.getMetadataRefOffset(IGM);
-  spareBits.appendClearBits(metadataOffset.getValueInBits());
-  auto typeSpareBits = IGM.getHeapObjectSpareBits();
-  spareBits.append(typeSpareBits);
-  auto witnessSpareBits =
-    IGM.getWitnessTablePtrSpareBits();
-  for (unsigned i = 0, e = protosWithWitnessTables.size(); i < e; ++i)
-    spareBits.append(witnessSpareBits);
-  assert(spareBits.size() == size.getValueInBits());
-   */
+  // TODO: There are spare bits we could theoretically use in the type metadata
+  // and witness table pointers, but opaque existentials are currently address-
+  // only, and we can't soundly take advantage of spare bits for in-memory
+  // representations.
+  auto spareBits = SpareBitVector::getConstant(size.getValueInBits(), false);
   return OpaqueExistentialTypeInfo::create(protosWithWitnessTables, type, size,
                                            std::move(spareBits),
                                            align);
@@ -1491,13 +1499,13 @@ TypeConverter::convertExistentialMetatypeType(ExistentialMetatypeType *T) {
   SmallVector<const ProtocolDecl *, 4> protosWithWitnessTables;
   SmallVector<llvm::Type*, 4> fields;
 
-  SpareBitVector spareBits;
-
   assert(T->getRepresentation() != MetatypeRepresentation::Thin &&
          "existential metatypes cannot have thin representation");
   auto &baseTI = cast<LoadableTypeInfo>(getMetatypeTypeInfo(T->getRepresentation()));
   fields.push_back(baseTI.getStorageType());
-  spareBits.append(baseTI.getSpareBits());
+
+  auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
+  builder.append(baseTI.getSpareBits());
 
   for (auto protoTy : layout.getProtocols()) {
     auto *protoDecl = protoTy->getDecl();
@@ -1508,7 +1516,7 @@ TypeConverter::convertExistentialMetatypeType(ExistentialMetatypeType *T) {
     // Each protocol gets a witness table.
     protosWithWitnessTables.push_back(protoDecl);
     fields.push_back(IGM.WitnessTablePtrTy);
-    spareBits.append(IGM.getWitnessTablePtrSpareBits());
+    builder.append(IGM.getWitnessTablePtrSpareBits());
   }
 
   llvm::StructType *type = llvm::StructType::get(IGM.getLLVMContext(), fields);
@@ -1517,7 +1525,7 @@ TypeConverter::convertExistentialMetatypeType(ExistentialMetatypeType *T) {
   Alignment align = IGM.getPointerAlignment();
 
   return ExistentialMetatypeTypeInfo::create(protosWithWitnessTables, type,
-                                             size, std::move(spareBits), align,
+                                             size, builder.build(), align,
                                              baseTI);
 }
 

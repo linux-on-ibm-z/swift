@@ -18,6 +18,7 @@
 #ifndef SWIFT_IRGEN_GENRECORD_H
 #define SWIFT_IRGEN_GENRECORD_H
 
+#include "APInt.h"
 #include "IRGenFunction.h"
 #include "IRGenModule.h"
 #include "Explosion.h"
@@ -598,27 +599,35 @@ public:
     // inhabitants.
     auto &field = *asImpl().getFixedExtraInhabitantProvidingField(IGM);
     auto &fieldTI = cast<FixedTypeInfo>(field.getTypeInfo());
-    APInt fieldValue = fieldTI.getFixedExtraInhabitantValue(IGM, bits, index);
-    return fieldValue.shl(field.getFixedByteOffset().getValueInBits());
+    auto fieldOffset = field.getFixedByteOffset().getValueInBits();
+    auto fieldSize = fieldTI.getFixedExtraInhabitantMask(IGM).getBitWidth();
+    APInt fieldValue = fieldTI.getFixedExtraInhabitantValue(IGM, fieldSize, index);
+    auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
+    builder.appendZeros(fieldOffset);
+    builder.append(fieldValue);
+    builder.appendZeros(bits - fieldOffset - fieldSize);
+    return builder.build().getValue();
   }
 
   APInt getFixedExtraInhabitantMask(IRGenModule &IGM) const override {
     auto field = asImpl().getFixedExtraInhabitantProvidingField(IGM);
     if (!field)
       return APInt();
-    
+
     const FixedTypeInfo &fieldTI
       = cast<FixedTypeInfo>(field->getTypeInfo());
     auto targetSize = asImpl().getFixedSize().getValueInBits();
-    
+
     if (fieldTI.isKnownEmpty(ResilienceExpansion::Maximal))
       return APInt(targetSize, 0);
-    
-    APInt fieldMask = fieldTI.getFixedExtraInhabitantMask(IGM);
-    if (targetSize > fieldMask.getBitWidth())
-      fieldMask = fieldMask.zext(targetSize);
-    fieldMask = fieldMask.shl(field->getFixedByteOffset().getValueInBits());
-    return fieldMask;
+
+    auto fieldOffset = field->getFixedByteOffset().getValueInBits();
+    auto fieldMask = fieldTI.getFixedExtraInhabitantMask(IGM);
+    auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
+    builder.appendZeros(fieldOffset);
+    builder.append(fieldMask);
+    builder.appendZeros(targetSize - fieldMask.getBitWidth() - fieldOffset);
+    return builder.build().getValue();
   }
 
   llvm::Value *getExtraInhabitantIndex(IRGenFunction &IGF,
