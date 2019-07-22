@@ -3180,7 +3180,7 @@ namespace {
         getFixedPayloadTypeInfo().getFixedExtraInhabitantMask(IGM);
       auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
       builder.append(baseMask);
-      builder.appendSetBits(totalSize -  baseMask.getBitWidth());
+      builder.padWithSetBitsTo(totalSize);
       return builder.build().getValue();
     }
 
@@ -5224,10 +5224,9 @@ namespace {
       auto tagBits = CommonSpareBits.asAPInt();
       auto fixedTI = cast<FixedTypeInfo>(TI);
       if (getExtraTagBitCountForExtraInhabitants() > 0) {
-        auto bitSize = fixedTI->getFixedSize().getValueInBits();
         auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
         builder.append(CommonSpareBits);
-        builder.appendSetBits(bitSize - CommonSpareBits.size());
+        builder.padWithSetBitsTo(fixedTI->getFixedSize().getValueInBits());
 	tagBits = builder.build().getValue();
       }
       return tagBits;
@@ -6440,7 +6439,7 @@ MultiPayloadEnumImplStrategy::completeFixedLayout(TypeConverter &TC,
     auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
     auto spareBits = cast<FixedTypeInfo>(*elt.origTI).getSpareBits();
     builder.append(spareBits);
-    builder.appendSetBits((PayloadSize * 8) - spareBits.size());
+    builder.padWithSetBitsTo(PayloadSize * 8);
     commonSpareBits.getValue() &= builder.build().getValue();
   }
 

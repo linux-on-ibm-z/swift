@@ -77,7 +77,7 @@ getPointerFixedExtraInhabitantValue(const IRGenModule &IGM, unsigned bits,
   auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
   builder.appendClearBits(offset);
   builder.append(APInt(pointerSizeInBits, value));
-  builder.appendClearBits(bits - offset - pointerSizeInBits);
+  builder.padWithClearBitsTo(bits);
   return builder.build().getValue();
 }
 

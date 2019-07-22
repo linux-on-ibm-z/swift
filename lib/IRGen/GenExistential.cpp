@@ -587,7 +587,7 @@ namespace {
       auto totalSize = asDerived().getFixedSize().getValueInBits();
       auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
       builder.append(bits);
-      builder.appendClearBits(totalSize - bits.getBitWidth());
+      builder.padWithClearBitsTo(totalSize);
       return builder.build().getValue();
     }
   };
@@ -653,10 +653,9 @@ namespace {
                                                      ReferenceOwnership::Name, \
                                                      Refcounting); \
         /* Zext out to the size of the existential. */ \
-        auto totalSize = getFixedSize().getValueInBits(); \
         auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian()); \
         builder.append(bits); \
-        builder.appendClearBits(totalSize - bits.getBitWidth()); \
+        builder.padWithClearBitsTo(getFixedSize().getValueInBits()); \
         return builder.build().getValue(); \
       } else { \
         return Super::getFixedExtraInhabitantMask(IGM); \
@@ -929,14 +928,10 @@ public:
     return getHeapObjectFixedExtraInhabitantValue(IGM, bits, index, offset);
   }
   APInt getFixedExtraInhabitantMask(IRGenModule &IGM) const override {
-    auto metadataOffset = getLayout().getMetadataRefOffset(IGM).getValueInBits();
-    auto totalSize = getFixedSize().getValueInBits();
-    auto pointerSize = IGM.getPointerSize().getValueInBits();
-
     auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
-    builder.appendClearBits(metadataOffset);
-    builder.appendSetBits(pointerSize);
-    builder.appendClearBits(totalSize - metadataOffset - pointerSize);
+    builder.appendClearBits(getLayout().getMetadataRefOffset(IGM).getValueInBits());
+    builder.appendSetBits(IGM.getPointerSize().getValueInBits());
+    builder.padWithClearBitsTo(getFixedSize().getValueInBits());
     return builder.build().getValue();
   }
   llvm::Value *getExtraInhabitantIndex(IRGenFunction &IGF,

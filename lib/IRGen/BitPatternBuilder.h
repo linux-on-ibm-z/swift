@@ -123,11 +123,22 @@ public:
     }
   }
 
-  /// Return the combined bit width of all the elements added so far.
-  /// The returned value will be a multiple of 8.
-  unsigned getBitWidth() const {
-    assert(Size % 8 == 0);
-    return Size;
+  /// Append set (1) bits to the bit pattern until it reaches the
+  /// given size in bits. The total number of bits must be a
+  /// multiple of 8.
+  void padWithSetBitsTo(unsigned totalSizeInBits) {
+    assert(totalSizeInBits % 8 == 0);
+    assert(totalSizeInBits >= Size);
+    appendSetBits(totalSizeInBits - Size);
+  }
+
+  /// Append clear (0) bits to the bit pattern until it reaches the
+  /// given size in bits. The total number of bits must be a
+  /// multiple of 8.
+  void padWithClearBitsTo(unsigned totalSizeInBits) {
+    assert(totalSizeInBits % 8 == 0);
+    assert(totalSizeInBits >= Size);
+    appendClearBits(totalSizeInBits - Size);
   }
 
   /// Build the complete mask for the composite type. If the mask has a
