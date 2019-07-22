@@ -36,8 +36,8 @@ enum AllMixedRefcounted {
 // CHECK:   %1 = bitcast %T39enum_value_semantics_special_cases_objc18AllMixedRefcountedO* %0 to i64*
 // CHECK:   %2 = load i64, i64* %1, align 8
 // CHECK:   %3 = lshr i64 %2, 62
-// CHECK:   %4 = trunc i64 %3 to i8
-// CHECK:   %5 = and i8 %4, 3
+// CHECK:   %4 = trunc i64 %3 to i2
+// CHECK:   %5 = zext i2 %4 to i8
 // CHECK:   call void @"$s39enum_value_semantics_special_cases_objc18AllMixedRefcountedOWOe"(i64 %2)
 // CHECK:   ret void
 // CHECK: }
@@ -70,8 +70,8 @@ enum MixedRefcountedWithIndirect {
 // CHECK:   %1 = bitcast %T39enum_value_semantics_special_cases_objc27MixedRefcountedWithIndirectO* %0 to i64*
 // CHECK:   %2 = load i64, i64* %1, align 8
 // CHECK:   %3 = lshr i64 %2, 62
-// CHECK:   %4 = trunc i64 %3 to i8
-// CHECK:   %5 = and i8 %4, 3
+// CHECK:   %4 = trunc i64 %3 to i2
+// CHECK:   %5 = zext i2 %4 to i8
 // CHECK:   call void @"$s39enum_value_semantics_special_cases_objc27MixedRefcountedWithIndirectOWOe"(i64 %2)
 // CHECK:   ret void
 // CHECK: }
@@ -80,8 +80,8 @@ enum MixedRefcountedWithIndirect {
 // CHECK-LABEL: define linkonce_odr hidden void @"$s39enum_value_semantics_special_cases_objc27MixedRefcountedWithIndirectOWOe"(i64)
 // CHECK: entry:
 // CHECK:   %1 = lshr i64 %0, 62
-// CHECK:   %2 = trunc i64 %1 to i8
-// CHECK:   %3 = and i8 %2, 3
+// CHECK:   %2 = trunc i64 %1 to i2
+// CHECK:   %3 = zext i2 %2 to i8
 // CHECK:   switch i8 %3, label %9 [
 // CHECK:     i8 0, label %4
 // CHECK:     i8 1, label %6

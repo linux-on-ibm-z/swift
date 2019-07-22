@@ -28,5 +28,5 @@ enum Node {
 // CHECK:  [[ADDR:%.*]] = getelementptr inbounds { i64, i64, i64, i8 }, { i64, i64, i64, i8 }* {{.*}}, i32 0, i32 3
 // CHECK:  [[BYTE:%.*]] = load i8, i8* [[ADDR]]
 // Make sure we zext before we shift.
-// CHECK:  [[ZEXT:%.*]] = zext i8 [[BYTE]] to i32
-// CHECK:  shl i32 [[ZEXT]], 10
+// CHECK:  [[ZEXT:%.*]] = zext i8 [[BYTE]] to i18
+// CHECK:  shl i18 [[ZEXT]], 10
