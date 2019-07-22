@@ -115,7 +115,7 @@
 #include "llvm/Support/Compiler.h"
 #include "clang/CodeGen/SwiftCallingConv.h"
 
-#include "APInt.h"
+#include "BitPatternBuilder.h"
 #include "GenDecl.h"
 #include "GenMeta.h"
 #include "GenProto.h"
@@ -3178,9 +3178,9 @@ namespace {
         return APInt::getAllOnesValue(totalSize);
       auto baseMask =
         getFixedPayloadTypeInfo().getFixedExtraInhabitantMask(IGM);
-      auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
+      auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
       builder.append(baseMask);
-      builder.appendOnes(totalSize -  baseMask.getBitWidth());
+      builder.appendSetBits(totalSize -  baseMask.getBitWidth());
       return builder.build().getValue();
     }
 
@@ -3188,7 +3188,7 @@ namespace {
     getBitPatternForNoPayloadElement(EnumElementDecl *theCase) const override {
       APInt payloadPart, extraPart;
       std::tie(payloadPart, extraPart) = getNoPayloadCaseValue(theCase);
-      auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
+      auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
       if (PayloadBitCount > 0)
         builder.append(payloadPart);
 
@@ -3206,7 +3206,7 @@ namespace {
       auto &payloadTI = getFixedPayloadTypeInfo();
 
       Size size = cast<FixedTypeInfo>(TI)->getFixedSize();
-      auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
+      auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
       if (Size payloadSize = payloadTI.getFixedSize()) {
         auto payloadMask = APInt::getNullValue(payloadSize.getValueInBits());
         if (getNumExtraInhabitantTagValues() > 0)
@@ -3217,16 +3217,16 @@ namespace {
         size -= payloadSize;
       }
       if (ExtraTagBitCount > 0) {
-        builder.appendOnes(size.getValueInBits());
+        builder.appendSetBits(size.getValueInBits());
       }
       return builder.build();
     }
 
     ClusteredBitVector getTagBitsForPayloads() const override {
       // We only have tag bits if we spilled extra bits.
-      auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
+      auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
       Size payloadSize = getFixedPayloadTypeInfo().getFixedSize();
-      builder.appendZeros(payloadSize.getValueInBits());
+      builder.appendClearBits(payloadSize.getValueInBits());
 
       Size totalSize = cast<FixedTypeInfo>(TI)->getFixedSize();
       if (ExtraTagBitCount) {
@@ -5225,9 +5225,9 @@ namespace {
       auto fixedTI = cast<FixedTypeInfo>(TI);
       if (getExtraTagBitCountForExtraInhabitants() > 0) {
         auto bitSize = fixedTI->getFixedSize().getValueInBits();
-        auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
+        auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
         builder.append(CommonSpareBits);
-        builder.appendOnes(bitSize - CommonSpareBits.size());
+        builder.appendSetBits(bitSize - CommonSpareBits.size());
 	tagBits = builder.build().getValue();
       }
       return tagBits;
@@ -5273,7 +5273,7 @@ namespace {
       auto extraTagMask = getExtraTagBitCountForExtraInhabitants() >= 32
         ? ~0u : (1 << getExtraTagBitCountForExtraInhabitants()) - 1;
 
-      auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
+      auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
       if (auto payloadBitCount = CommonSpareBits.count()) {
         auto payloadTagMask = payloadBitCount >= 32
           ? ~0u : (1 << payloadBitCount) - 1;
@@ -5286,7 +5286,7 @@ namespace {
                                (mask >> payloadBitCount) & extraTagMask));
         }
       } else {
-        builder.appendZeros(CommonSpareBits.size());
+        builder.appendClearBits(CommonSpareBits.size());
         builder.append(APInt(bits - CommonSpareBits.size(), mask & extraTagMask));
       }
       return builder.build().getValue();
@@ -5305,7 +5305,7 @@ namespace {
 
       APInt payloadPart, extraPart;
       std::tie(payloadPart, extraPart) = getNoPayloadCaseValue(index);
-      auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
+      auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
       if (PayloadBitCount > 0)
         builder.append(payloadPart);
 
@@ -5340,7 +5340,7 @@ namespace {
 
       // Build a mask containing the tag bits for the payload and those
       // spilled into the extra tag.
-      auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
+      auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
       builder.append(PayloadTagBits);
 
       // Set tag bits in extra tag to 1.
@@ -6321,9 +6321,9 @@ TypeInfo *SinglePayloadEnumImplStrategy::completeFixedLayout(
   // sets to be able to reason about how many spare bits from the payload type
   // we can forward. If we spilled tag bits, however, we can offer the unused
   // bits we have in that byte.
-  auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
+  auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
   if (auto size = payloadTI.getFixedSize().getValueInBits()) {
-    builder.appendZeros(size);
+    builder.appendClearBits(size);
   }
   if (ExtraTagBitCount > 0) {
     auto paddedSize = extraTagByteCount * 8;
@@ -6437,10 +6437,10 @@ MultiPayloadEnumImplStrategy::completeFixedLayout(TypeConverter &TC,
     // class-bound archetype. These do not have any spare bits because
     // they can contain Obj-C tagged pointers. To handle this case
     // correctly, we get spare bits from the unsubstituted type.
-    auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
+    auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
     auto spareBits = cast<FixedTypeInfo>(*elt.origTI).getSpareBits();
     builder.append(spareBits);
-    builder.appendOnes((PayloadSize * 8) - spareBits.size());
+    builder.appendSetBits((PayloadSize * 8) - spareBits.size());
     commonSpareBits.getValue() &= builder.build().getValue();
   }
 
@@ -6495,10 +6495,10 @@ MultiPayloadEnumImplStrategy::completeFixedLayout(TypeConverter &TC,
   if (numTagBits >= commonSpareBitCount) {
     PayloadTagBits = CommonSpareBits;
 
-    auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
+    auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
     // We're using all of the common spare bits as tag bits, so none
     // of them are spare; nor are the extra tag bits.
-    builder.appendZeros(CommonSpareBits.size());
+    builder.appendClearBits(CommonSpareBits.size());
 
     // The remaining bits in the extra tag bytes are spare.
     if (ExtraTagBitCount) {

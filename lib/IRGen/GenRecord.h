@@ -18,7 +18,7 @@
 #ifndef SWIFT_IRGEN_GENRECORD_H
 #define SWIFT_IRGEN_GENRECORD_H
 
-#include "APInt.h"
+#include "BitPatternBuilder.h"
 #include "IRGenFunction.h"
 #include "IRGenModule.h"
 #include "Explosion.h"
@@ -602,10 +602,10 @@ public:
     auto fieldOffset = field.getFixedByteOffset().getValueInBits();
     auto fieldSize = fieldTI.getFixedExtraInhabitantMask(IGM).getBitWidth();
     APInt fieldValue = fieldTI.getFixedExtraInhabitantValue(IGM, fieldSize, index);
-    auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
-    builder.appendZeros(fieldOffset);
+    auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
+    builder.appendClearBits(fieldOffset);
     builder.append(fieldValue);
-    builder.appendZeros(bits - fieldOffset - fieldSize);
+    builder.appendClearBits(bits - fieldOffset - fieldSize);
     return builder.build().getValue();
   }
 
@@ -623,10 +623,10 @@ public:
 
     auto fieldOffset = field->getFixedByteOffset().getValueInBits();
     auto fieldMask = fieldTI.getFixedExtraInhabitantMask(IGM);
-    auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
-    builder.appendZeros(fieldOffset);
+    auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
+    builder.appendClearBits(fieldOffset);
     builder.append(fieldMask);
-    builder.appendZeros(targetSize - fieldMask.getBitWidth() - fieldOffset);
+    builder.appendClearBits(targetSize - fieldMask.getBitWidth() - fieldOffset);
     return builder.build().getValue();
   }
 

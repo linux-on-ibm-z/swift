@@ -20,7 +20,7 @@
 #include "swift/AST/ASTContext.h"
 #include "swift/AST/DiagnosticsIRGen.h"
 
-#include "APInt.h"
+#include "BitPatternBuilder.h"
 #include "FixedTypeInfo.h"
 #include "IRGenFunction.h"
 #include "IRGenModule.h"
@@ -364,7 +364,7 @@ void StructLayoutBuilder::setAsBodyOfStruct(llvm::StructType *type) const {
 
 /// Return the spare bit mask of the structure built so far.
 SpareBitVector StructLayoutBuilder::getSpareBits() const {
-  auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
+  auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
   for (const auto &v : CurSpareBits) {
     builder.append(v);
   }

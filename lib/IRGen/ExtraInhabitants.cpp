@@ -16,7 +16,7 @@
 
 #include "ExtraInhabitants.h"
 
-#include "APInt.h"
+#include "BitPatternBuilder.h"
 #include "IRGenModule.h"
 #include "IRGenFunction.h"
 #include "SwiftTargetInfo.h"
@@ -74,10 +74,10 @@ getPointerFixedExtraInhabitantValue(const IRGenModule &IGM, unsigned bits,
 
   uint64_t value = (uint64_t)index << numReservedLowBits;
 
-  auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
-  builder.appendZeros(offset);
+  auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
+  builder.appendClearBits(offset);
   builder.append(APInt(pointerSizeInBits, value));
-  builder.appendZeros(bits - offset - pointerSizeInBits);
+  builder.appendClearBits(bits - offset - pointerSizeInBits);
   return builder.build().getValue();
 }
 

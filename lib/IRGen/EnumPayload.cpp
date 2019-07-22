@@ -10,7 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "APInt.h"
+#include "BitPatternReader.h"
 #include "EnumPayload.h"
 #include "Explosion.h"
 #include "GenEnum.h"
@@ -68,7 +68,7 @@ EnumPayload EnumPayload::zero(IRGenModule &IGM, EnumPayloadSchema schema) {
 EnumPayload EnumPayload::fromBitPattern(IRGenModule &IGM,
                                         const APInt &bitPattern,
                                         EnumPayloadSchema schema) {
-  auto maskReader = APIntReader(bitPattern, IGM.Triple.isLittleEndian());
+  auto maskReader = BitPatternReader(bitPattern, IGM.Triple.isLittleEndian());
 
   EnumPayload result;
   schema.forEachType(IGM, [&](llvm::Type *type) {
@@ -314,8 +314,8 @@ EnumPayload::emitCompare(IRGenFunction &IGF,
   assert((~mask & value) == 0
          && "value has masked out bits set?!");
 
-  auto valueReader = APIntReader(value, IGF.IGM.Triple.isLittleEndian());
-  auto maskReader = APIntReader(mask, IGF.IGM.Triple.isLittleEndian());
+  auto valueReader = BitPatternReader(value, IGF.IGM.Triple.isLittleEndian());
+  auto maskReader = BitPatternReader(mask, IGF.IGM.Triple.isLittleEndian());
 
   auto &DL = IGF.IGM.DataLayout;
   llvm::Value *condition = nullptr;
@@ -368,7 +368,7 @@ EnumPayload::emitApplyAndMask(IRGenFunction &IGF, const APInt &mask) {
   if (mask.isAllOnesValue())
     return;
 
-  auto maskReader = APIntReader(mask, IGF.IGM.Triple.isLittleEndian());
+  auto maskReader = BitPatternReader(mask, IGF.IGM.Triple.isLittleEndian());
 
   auto &DL = IGF.IGM.DataLayout;
   for (auto &pv : PayloadValues) {
@@ -410,7 +410,7 @@ EnumPayload::emitApplyOrMask(IRGenFunction &IGF, const APInt &mask) {
   if (mask == 0)
     return;
 
-  auto maskReader = APIntReader(mask, IGF.IGM.Triple.isLittleEndian());
+  auto maskReader = BitPatternReader(mask, IGF.IGM.Triple.isLittleEndian());
 
   auto &DL = IGF.IGM.DataLayout;
   for (auto &pv : PayloadValues) {
@@ -485,7 +485,7 @@ void EnumPayload::emitScatterBits(IRGenFunction &IGF,
 
   auto valueBits = DL.getTypeSizeInBits(value->getType());
   mask = getLowestNSetBits(mask, valueBits);
-  auto maskReader = APIntReader(mask, DL.isLittleEndian());
+  auto maskReader = BitPatternReader(mask, DL.isLittleEndian());
   auto maskPop = mask.countPopulation();
   if (maskPop < valueBits) {
     auto valueType = dyn_cast<llvm::IntegerType>(value->getType());
@@ -553,7 +553,7 @@ EnumPayload::emitGatherSpareBits(IRGenFunction &IGF,
   auto mask = getLowestNSetBits(spareBits.asAPInt(),
                                 resultBitWidth - firstBitOffset);
   auto bitWidth = mask.countPopulation();
-  auto spareBitReader = APIntReader(std::move(mask),
+  auto spareBitReader = BitPatternReader(std::move(mask),
 		                    IGF.IGM.Triple.isLittleEndian());
   auto usedBits = firstBitOffset;
 

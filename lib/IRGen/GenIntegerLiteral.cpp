@@ -20,7 +20,7 @@
 #include "llvm/IR/GlobalVariable.h"
 #include "swift/ABI/MetadataValues.h"
 
-#include "APInt.h"
+#include "BitPatternBuilder.h"
 #include "Explosion.h"
 #include "ExtraInhabitants.h"
 #include "GenType.h"
@@ -102,9 +102,9 @@ public:
     return getHeapObjectExtraInhabitantIndex(IGF, src);
   }
   APInt getFixedExtraInhabitantMask(IRGenModule &IGM) const override {
-    auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
-    builder.appendOnes(IGM.getPointerSize().getValueInBits());
-    builder.appendZeros(IGM.getPointerSize().getValueInBits());
+    auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
+    builder.appendSetBits(IGM.getPointerSize().getValueInBits());
+    builder.appendClearBits(IGM.getPointerSize().getValueInBits());
     return builder.build().getValue();
   }
   void storeExtraInhabitant(IRGenFunction &IGF, llvm::Value *index,

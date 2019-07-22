@@ -30,7 +30,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include "APInt.h"
+#include "BitPatternBuilder.h"
 #include "EnumPayload.h"
 #include "Explosion.h"
 #include "FixedTypeInfo.h"
@@ -585,9 +585,9 @@ namespace {
 
       // Zext out to the size of the existential.
       auto totalSize = asDerived().getFixedSize().getValueInBits();
-      auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
+      auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
       builder.append(bits);
-      builder.appendZeros(totalSize - bits.getBitWidth());
+      builder.appendClearBits(totalSize - bits.getBitWidth());
       return builder.build().getValue();
     }
   };
@@ -654,9 +654,9 @@ namespace {
                                                      Refcounting); \
         /* Zext out to the size of the existential. */ \
         auto totalSize = getFixedSize().getValueInBits(); \
-        auto builder = APIntBuilder(IGM.Triple.isLittleEndian()); \
+        auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian()); \
         builder.append(bits); \
-        builder.appendZeros(totalSize - bits.getBitWidth()); \
+        builder.appendClearBits(totalSize - bits.getBitWidth()); \
         return builder.build().getValue(); \
       } else { \
         return Super::getFixedExtraInhabitantMask(IGM); \
@@ -933,10 +933,10 @@ public:
     auto totalSize = getFixedSize().getValueInBits();
     auto pointerSize = IGM.getPointerSize().getValueInBits();
 
-    auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
-    builder.appendZeros(metadataOffset);
-    builder.appendOnes(pointerSize);
-    builder.appendZeros(totalSize - metadataOffset - pointerSize);
+    auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
+    builder.appendClearBits(metadataOffset);
+    builder.appendSetBits(pointerSize);
+    builder.appendClearBits(totalSize - metadataOffset - pointerSize);
     return builder.build().getValue();
   }
   llvm::Value *getExtraInhabitantIndex(IRGenFunction &IGF,
@@ -1147,7 +1147,7 @@ public:
   const TypeInfo * \
   create##Name##StorageType(TypeConverter &TC, \
                             bool isOptional) const override { \
-    auto builder = APIntBuilder(TC.IGM.Triple.isLittleEndian()); \
+    auto builder = BitPatternBuilder(TC.IGM.Triple.isLittleEndian()); \
     auto ref = TC.IGM.getReferenceStorageSpareBits( \
                                                    ReferenceOwnership::Name, \
                                                    Refcounting); \
@@ -1175,7 +1175,7 @@ public:
     auto ref = TC.IGM.getReferenceStorageSpareBits( \
                                                    ReferenceOwnership::Name, \
                                                    Refcounting); \
-    auto builder = APIntBuilder(TC.IGM.Triple.isLittleEndian()); \
+    auto builder = BitPatternBuilder(TC.IGM.Triple.isLittleEndian()); \
     builder.append(ref); \
     for (unsigned i = 0, e = getNumStoredProtocols(); i != e; ++i) { \
       builder.append(TC.IGM.getWitnessTablePtrSpareBits()); \
@@ -1212,7 +1212,7 @@ public:
     auto ref = TC.IGM.getReferenceStorageSpareBits( \
                                                    ReferenceOwnership::Name, \
                                                    ReferenceCounting::Native); \
-    auto builder = APIntBuilder(TC.IGM.Triple.isLittleEndian()); \
+    auto builder = BitPatternBuilder(TC.IGM.Triple.isLittleEndian()); \
     builder.append(ref); \
     for (unsigned i = 0, e = getNumStoredProtocols(); i != e; ++i) { \
       builder.append(TC.IGM.getWitnessTablePtrSpareBits()); \
@@ -1435,14 +1435,14 @@ static const TypeInfo *createExistentialTypeInfo(IRGenModule &IGM, CanType T) {
     Alignment align = IGM.getPointerAlignment();
     Size size = classFields.size() * IGM.getPointerSize();
 
-    auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
+    auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
 
     // The class pointer is an unknown heap object, so it may be a tagged
     // pointer, if the platform has those.
     if (allowsTaggedPointers &&
         refcounting != ReferenceCounting::Native &&
         IGM.TargetInfo.hasObjCTaggedPointers()) {
-      builder.appendZeros(IGM.getPointerSize().getValueInBits());
+      builder.appendClearBits(IGM.getPointerSize().getValueInBits());
     } else {
       // If the platform doesn't use ObjC tagged pointers, we can go crazy.
       builder.append(IGM.getHeapObjectSpareBits());
@@ -1504,7 +1504,7 @@ TypeConverter::convertExistentialMetatypeType(ExistentialMetatypeType *T) {
   auto &baseTI = cast<LoadableTypeInfo>(getMetatypeTypeInfo(T->getRepresentation()));
   fields.push_back(baseTI.getStorageType());
 
-  auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
+  auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
   builder.append(baseTI.getSpareBits());
 
   for (auto protoTy : layout.getProtocols()) {

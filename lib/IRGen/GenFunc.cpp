@@ -88,7 +88,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/ADT/StringSwitch.h"
 
-#include "APInt.h"
+#include "BitPatternBuilder.h"
 #include "Callee.h"
 #include "ConstantBuilder.h"
 #include "EnumPayload.h"
@@ -346,9 +346,9 @@ namespace {
 
     APInt getFixedExtraInhabitantMask(IRGenModule &IGM) const override {
       // Only the function pointer value is used for extra inhabitants.
-      auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
-      builder.appendOnes(IGM.getPointerSize().getValueInBits());
-      builder.appendZeros(IGM.getPointerSize().getValueInBits());
+      auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
+      builder.appendSetBits(IGM.getPointerSize().getValueInBits());
+      builder.appendClearBits(IGM.getPointerSize().getValueInBits());
       return builder.build().getValue();
     }
 
@@ -439,8 +439,8 @@ const TypeInfo *TypeConverter::convertBlockStorageType(SILBlockStorageType *T) {
   Size captureOffset(
     IGM.DataLayout.getStructLayout(IGM.ObjCBlockStructTy)->getSizeInBytes());
   Size size = captureOffset;
-  auto builder = APIntBuilder(IGM.Triple.isLittleEndian());
-  builder.appendZeros(size.getValueInBits());
+  auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
+  builder.appendClearBits(size.getValueInBits());
   IsPOD_t pod = IsNotPOD;
   IsBitwiseTakable_t bt = IsNotBitwiseTakable;
   if (!fixedCapture) {
@@ -450,7 +450,7 @@ const TypeInfo *TypeConverter::convertBlockStorageType(SILBlockStorageType *T) {
     fixedCaptureTy = cast<FixedTypeInfo>(capture).getStorageType();
     align = std::max(align, fixedCapture->getFixedAlignment());
     captureOffset = captureOffset.roundUpToAlignment(align);
-    builder.appendOnes(captureOffset.getValueInBits() - size.getValueInBits());
+    builder.appendSetBits(captureOffset.getValueInBits() - size.getValueInBits());
     size = captureOffset + fixedCapture->getFixedSize();
     builder.append(fixedCapture->getSpareBits());
     pod = fixedCapture->isPOD(ResilienceExpansion::Maximal);
