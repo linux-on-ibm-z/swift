@@ -601,11 +601,11 @@ public:
     auto &fieldTI = cast<FixedTypeInfo>(field.getTypeInfo());
     auto fieldSize = fieldTI.getFixedExtraInhabitantMask(IGM).getBitWidth();
 
-    auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
-    builder.appendClearBits(field.getFixedByteOffset().getValueInBits());
-    builder.append(fieldTI.getFixedExtraInhabitantValue(IGM, fieldSize, index));
-    builder.padWithClearBitsTo(bits);
-    return builder.build().getValue();
+    auto value = BitPatternBuilder(IGM.Triple.isLittleEndian());
+    value.appendClearBits(field.getFixedByteOffset().getValueInBits());
+    value.append(fieldTI.getFixedExtraInhabitantValue(IGM, fieldSize, index));
+    value.padWithClearBitsTo(bits);
+    return value.build().getValue();
   }
 
   APInt getFixedExtraInhabitantMask(IRGenModule &IGM) const override {
@@ -620,11 +620,11 @@ public:
     if (fieldTI.isKnownEmpty(ResilienceExpansion::Maximal))
       return APInt(targetSize, 0);
 
-    auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
-    builder.appendClearBits(field->getFixedByteOffset().getValueInBits());
-    builder.append(fieldTI.getFixedExtraInhabitantMask(IGM));
-    builder.padWithClearBitsTo(targetSize);
-    return builder.build().getValue();
+    auto mask = BitPatternBuilder(IGM.Triple.isLittleEndian());
+    mask.appendClearBits(field->getFixedByteOffset().getValueInBits());
+    mask.append(fieldTI.getFixedExtraInhabitantMask(IGM));
+    mask.padWithClearBitsTo(targetSize);
+    return mask.build().getValue();
   }
 
   llvm::Value *getExtraInhabitantIndex(IRGenFunction &IGF,

@@ -364,9 +364,9 @@ void StructLayoutBuilder::setAsBodyOfStruct(llvm::StructType *type) const {
 
 /// Return the spare bit mask of the structure built so far.
 SpareBitVector StructLayoutBuilder::getSpareBits() const {
-  auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
+  auto spareBits = BitPatternBuilder(IGM.Triple.isLittleEndian());
   for (const auto &v : CurSpareBits) {
-    builder.append(v);
+    spareBits.append(v);
   }
-  return builder.build();
+  return spareBits.build();
 }

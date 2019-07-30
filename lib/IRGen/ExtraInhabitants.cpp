@@ -74,11 +74,11 @@ getPointerFixedExtraInhabitantValue(const IRGenModule &IGM, unsigned bits,
 
   uint64_t value = (uint64_t)index << numReservedLowBits;
 
-  auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
-  builder.appendClearBits(offset);
-  builder.append(APInt(pointerSizeInBits, value));
-  builder.padWithClearBitsTo(bits);
-  return builder.build().getValue();
+  auto valueBits = BitPatternBuilder(IGM.Triple.isLittleEndian());
+  valueBits.appendClearBits(offset);
+  valueBits.append(APInt(pointerSizeInBits, value));
+  valueBits.padWithClearBitsTo(bits);
+  return valueBits.build().getValue();
 }
 
 APInt irgen::getHeapObjectFixedExtraInhabitantValue(const IRGenModule &IGM,

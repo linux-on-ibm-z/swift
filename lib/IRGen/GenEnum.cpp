@@ -3178,26 +3178,26 @@ namespace {
         return APInt::getAllOnesValue(totalSize);
       auto baseMask =
         getFixedPayloadTypeInfo().getFixedExtraInhabitantMask(IGM);
-      auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
-      builder.append(baseMask);
-      builder.padWithSetBitsTo(totalSize);
-      return builder.build().getValue();
+      auto mask = BitPatternBuilder(IGM.Triple.isLittleEndian());
+      mask.append(baseMask);
+      mask.padWithSetBitsTo(totalSize);
+      return mask.build().getValue();
     }
 
     ClusteredBitVector
     getBitPatternForNoPayloadElement(EnumElementDecl *theCase) const override {
       APInt payloadPart, extraPart;
       std::tie(payloadPart, extraPart) = getNoPayloadCaseValue(theCase);
-      auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
+      auto value = BitPatternBuilder(IGM.Triple.isLittleEndian());
       if (PayloadBitCount > 0)
-        builder.append(payloadPart);
+        value.append(payloadPart);
 
       Size size = cast<FixedTypeInfo>(TI)->getFixedSize();
       if (ExtraTagBitCount > 0) {
         auto paddedWidth = size.getValueInBits() - PayloadBitCount;
-        builder.append(extraPart.zextOrSelf(paddedWidth));
+        value.append(extraPart.zextOrSelf(paddedWidth));
       }
-      return builder.build();
+      return value.build();
     }
 
     ClusteredBitVector
@@ -3206,37 +3206,36 @@ namespace {
       auto &payloadTI = getFixedPayloadTypeInfo();
 
       Size size = cast<FixedTypeInfo>(TI)->getFixedSize();
-      auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
+      auto mask = BitPatternBuilder(IGM.Triple.isLittleEndian());
       if (Size payloadSize = payloadTI.getFixedSize()) {
         auto payloadMask = APInt::getNullValue(payloadSize.getValueInBits());
         if (getNumExtraInhabitantTagValues() > 0)
           payloadMask |= payloadTI.getFixedExtraInhabitantMask(IGM);
         if (ExtraTagBitCount > 0)
           payloadMask |= 0xffffffffULL;
-        builder.append(std::move(payloadMask));
-        size -= payloadSize;
+        mask.append(std::move(payloadMask));
       }
       if (ExtraTagBitCount > 0) {
-        builder.appendSetBits(size.getValueInBits());
+        mask.padWithSetBitsTo(size.getValueInBits());
       }
-      return builder.build();
+      return mask.build();
     }
 
     ClusteredBitVector getTagBitsForPayloads() const override {
       // We only have tag bits if we spilled extra bits.
-      auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
+      auto tagBits = BitPatternBuilder(IGM.Triple.isLittleEndian());
       Size payloadSize = getFixedPayloadTypeInfo().getFixedSize();
-      builder.appendClearBits(payloadSize.getValueInBits());
+      tagBits.appendClearBits(payloadSize.getValueInBits());
 
       Size totalSize = cast<FixedTypeInfo>(TI)->getFixedSize();
       if (ExtraTagBitCount) {
         Size extraTagSize = totalSize - payloadSize;
-        builder.append(APInt(extraTagSize.getValueInBits(),
+        tagBits.append(APInt(extraTagSize.getValueInBits(),
                              (1U << ExtraTagBitCount) - 1));
       } else {
         assert(payloadSize == totalSize);
       }
-      return builder.build();
+      return tagBits.build();
     }
   };
 
@@ -5224,10 +5223,10 @@ namespace {
       auto tagBits = CommonSpareBits.asAPInt();
       auto fixedTI = cast<FixedTypeInfo>(TI);
       if (getExtraTagBitCountForExtraInhabitants() > 0) {
-        auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
-        builder.append(CommonSpareBits);
-        builder.padWithSetBitsTo(fixedTI->getFixedSize().getValueInBits());
-	tagBits = builder.build().getValue();
+        auto mask = BitPatternBuilder(IGM.Triple.isLittleEndian());
+        mask.append(CommonSpareBits);
+        mask.padWithSetBitsTo(fixedTI->getFixedSize().getValueInBits());
+        tagBits = mask.build().getValue();
       }
       return tagBits;
     }
@@ -5272,23 +5271,23 @@ namespace {
       auto extraTagMask = getExtraTagBitCountForExtraInhabitants() >= 32
         ? ~0u : (1 << getExtraTagBitCountForExtraInhabitants()) - 1;
 
-      auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
+      auto value = BitPatternBuilder(IGM.Triple.isLittleEndian());
       if (auto payloadBitCount = CommonSpareBits.count()) {
         auto payloadTagMask = payloadBitCount >= 32
           ? ~0u : (1 << payloadBitCount) - 1;
         auto payloadPart = mask & payloadTagMask;
         auto payloadBits = scatterBits(CommonSpareBits.asAPInt(),
                                        payloadPart);
-        builder.append(payloadBits);
+        value.append(payloadBits);
         if (getExtraTagBitCountForExtraInhabitants() > 0) {
-          builder.append(APInt(bits - CommonSpareBits.size(),
-                               (mask >> payloadBitCount) & extraTagMask));
+          value.append(APInt(bits - CommonSpareBits.size(),
+                             (mask >> payloadBitCount) & extraTagMask));
         }
       } else {
-        builder.appendClearBits(CommonSpareBits.size());
-        builder.append(APInt(bits - CommonSpareBits.size(), mask & extraTagMask));
+        value.appendClearBits(CommonSpareBits.size());
+        value.append(APInt(bits - CommonSpareBits.size(), mask & extraTagMask));
       }
-      return builder.build().getValue();
+      return value.build().getValue();
     }
 
     ClusteredBitVector
@@ -5304,17 +5303,17 @@ namespace {
 
       APInt payloadPart, extraPart;
       std::tie(payloadPart, extraPart) = getNoPayloadCaseValue(index);
-      auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
+      auto value = BitPatternBuilder(IGM.Triple.isLittleEndian());
       if (PayloadBitCount > 0)
-        builder.append(payloadPart);
+        value.append(payloadPart);
 
       Size size = cast<FixedTypeInfo>(TI)->getFixedSize();
       if (ExtraTagBitCount > 0) {
         auto paddedWidth = size.getValueInBits() - PayloadBitCount;
         auto extraPadded = extraPart.zextOrSelf(paddedWidth);
-        builder.append(std::move(extraPadded));
+        value.append(std::move(extraPadded));
       }
-      return builder.build();
+      return value.build();
     }
 
     ClusteredBitVector
@@ -5339,13 +5338,13 @@ namespace {
 
       // Build a mask containing the tag bits for the payload and those
       // spilled into the extra tag.
-      auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
-      builder.append(PayloadTagBits);
+      auto tagBits = BitPatternBuilder(IGM.Triple.isLittleEndian());
+      tagBits.append(PayloadTagBits);
 
       // Set tag bits in extra tag to 1.
       unsigned extraTagSize = size.getValueInBits() - PayloadTagBits.size();
-      builder.append(APInt(extraTagSize, (1U << ExtraTagBitCount) - 1U));
-      return builder.build();
+      tagBits.append(APInt(extraTagSize, (1U << ExtraTagBitCount) - 1U));
+      return tagBits.build();
     }
   };
 
@@ -6320,19 +6319,19 @@ TypeInfo *SinglePayloadEnumImplStrategy::completeFixedLayout(
   // sets to be able to reason about how many spare bits from the payload type
   // we can forward. If we spilled tag bits, however, we can offer the unused
   // bits we have in that byte.
-  auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
+  auto spareBits = BitPatternBuilder(IGM.Triple.isLittleEndian());
   if (auto size = payloadTI.getFixedSize().getValueInBits()) {
-    builder.appendClearBits(size);
+    spareBits.appendClearBits(size);
   }
   if (ExtraTagBitCount > 0) {
     auto paddedSize = extraTagByteCount * 8;
-    builder.append(APInt::getBitsSetFrom(paddedSize, ExtraTagBitCount));
+    spareBits.append(APInt::getBitsSetFrom(paddedSize, ExtraTagBitCount));
   }
   auto alignment = payloadTI.getFixedAlignment();
   applyLayoutAttributes(TC.IGM, theEnum, /*fixed*/true, alignment);
 
   getFixedEnumTypeInfo(
-      enumTy, Size(sizeWithTag), builder.build(), alignment,
+      enumTy, Size(sizeWithTag), spareBits.build(), alignment,
       payloadTI.isPOD(ResilienceExpansion::Maximal),
       payloadTI.isBitwiseTakable(ResilienceExpansion::Maximal));
   if (TIK >= Loadable && CopyDestroyKind == Normal) {
