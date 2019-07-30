@@ -283,7 +283,6 @@ void EnumPayload::emitSwitch(IRGenFunction &IGF,
       return;
     }
   
-    assert((~mask & cases[0].first) == 0);
     auto *cmp = emitCompare(IGF, mask, cases[0].first);
     IGF.Builder.CreateCondBr(cmp, cases[0].second, dflt.getPointer());
     return;
@@ -314,10 +313,10 @@ EnumPayload::emitCompare(IRGenFunction &IGF,
   assert((~mask & value) == 0
          && "value has masked out bits set?!");
 
-  auto valueReader = BitPatternReader(value, IGF.IGM.Triple.isLittleEndian());
-  auto maskReader = BitPatternReader(mask, IGF.IGM.Triple.isLittleEndian());
-
   auto &DL = IGF.IGM.DataLayout;
+  auto valueReader = BitPatternReader(value, DL.isLittleEndian());
+  auto maskReader = BitPatternReader(mask, DL.isLittleEndian());
+
   llvm::Value *condition = nullptr;
   for (auto &pv : PayloadValues) {
     auto v = forcePayloadValue(pv);
@@ -368,9 +367,9 @@ EnumPayload::emitApplyAndMask(IRGenFunction &IGF, const APInt &mask) {
   if (mask.isAllOnesValue())
     return;
 
-  auto maskReader = BitPatternReader(mask, IGF.IGM.Triple.isLittleEndian());
-
   auto &DL = IGF.IGM.DataLayout;
+  auto maskReader = BitPatternReader(mask, DL.isLittleEndian());
+
   for (auto &pv : PayloadValues) {
     auto payloadTy = getPayloadType(pv);
     unsigned size = DL.getTypeSizeInBits(payloadTy);
@@ -410,9 +409,9 @@ EnumPayload::emitApplyOrMask(IRGenFunction &IGF, const APInt &mask) {
   if (mask == 0)
     return;
 
-  auto maskReader = BitPatternReader(mask, IGF.IGM.Triple.isLittleEndian());
-
   auto &DL = IGF.IGM.DataLayout;
+  auto maskReader = BitPatternReader(mask, DL.isLittleEndian());
+
   for (auto &pv : PayloadValues) {
     auto payloadTy = getPayloadType(pv);
     unsigned size = DL.getTypeSizeInBits(payloadTy);
@@ -554,7 +553,7 @@ EnumPayload::emitGatherSpareBits(IRGenFunction &IGF,
                                 resultBitWidth - firstBitOffset);
   auto bitWidth = mask.countPopulation();
   auto spareBitReader = BitPatternReader(std::move(mask),
-		                    IGF.IGM.Triple.isLittleEndian());
+                                         DL.isLittleEndian());
   auto usedBits = firstBitOffset;
 
   llvm::Value *spareBitValue = nullptr;
@@ -579,7 +578,7 @@ EnumPayload::emitGatherSpareBits(IRGenFunction &IGF,
       break;
 
     unsigned offset = usedBits;
-    if (!IGF.IGM.Triple.isLittleEndian()) {
+    if (DL.isBigEndian()) {
       offset = bitWidth - usedBits - numBitsInPart;
     }
     // Get the spare bits from this part.
