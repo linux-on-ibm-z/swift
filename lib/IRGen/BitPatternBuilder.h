@@ -33,26 +33,26 @@ namespace irgen {
 /// would not be portable across architectures using different byte
 /// orders.
 ///
-/// Example of use:
+/// Example construction of a mask for a struct:
 ///
-///   Type to mask:
-///     struct {
-///       uint8_t a;
-///       uint8_t b;
-///       uint16_t c;
-///     };
+///   // Type T that we are generating a mask for:
+///   struct T {
+///     uint8_t a;
+///     uint8_t b;
+///     uint16_t c;
+///   };
 ///
-///   Code:
-///     auto mask = BitPatternBuilder(isLittleEndian());
-///     mask.appendSetBits(8);
-///     mask.appendClearBits(8);
-///     mask.append(APInt(16, 0x1177ULL));
+///   // Code to generate the mask:
+///   auto mask = BitPatternBuilder(isLittleEndian());
+///   mask.appendSetBits(8);             // mask T.a with 0xff
+///   mask.appendClearBits(8);           // mask T.b with 0x00
+///   mask.append(APInt(16, 0x1177ULL)); // mask T.c with 0x1177
 ///
-///   Little-endian result:
-///     mask.build(); // 0x117700ff [ ff 00 77 11 ]
+///   // Little-endian result:
+///   mask.build(); // 0x117700ff [ ff 00 77 11 ]
 ///
-///   Big-endian result:
-///     mask.build(); // 0xff001177 [ ff 00 11 77 ]
+///   // Big-endian result:
+///   mask.build(); // 0xff001177 [ ff 00 11 77 ]
 ///
 class BitPatternBuilder {
   using APInt = llvm::APInt;
