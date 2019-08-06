@@ -500,8 +500,8 @@ bb0(%0 : $SinglePayloadNontrivial):
 
 //   -- Get the high bits of the tag from the spare bits
 // CHECK-NEXT: [[SPARE_TAG_TMP:%.*]] = lshr i64 [[SECOND]], 62
-// CHECK-NEXT: [[SPARE_TAG_TMP2:%.*]] = trunc i64 [[SPARE_TAG_TMP]] to i2
-// CHECK-NEXT: [[SPARE_TAG_TMP3:%.*]] = zext i2 [[SPARE_TAG_TMP2]] to i8
+// CHECK-NEXT: [[SPARE_TAG_TMP2:%.*]] = trunc i64 [[SPARE_TAG_TMP]] to i8
+// CHECK-NEXT: [[SPARE_TAG_TMP3:%.*]] = and i8 [[SPARE_TAG_TMP2]], 3
 // CHECK-NEXT: [[SPARE_TAG:%.*]] = zext i8 [[SPARE_TAG_TMP3]] to i32
 
 //   -- Get the low bits of the tag from the payload area
@@ -574,9 +574,11 @@ bb0(%0 : $SinglePayloadNontrivial):
 // CHECK-NEXT: [[SECOND_PROJ:%.*]] = and i64 [[SECOND]], 72057594037927928
 
 //   -- Store the low bits of the tag in the spare bits of the payload
-// CHECK-NEXT: [[TAG_TRUNC:%.*]] = trunc i32 [[TAG_TMP]] to i2
-// CHECK-NEXT: [[TAG:%.*]] = zext i2 [[TAG_TRUNC]] to i64
-// CHECK-NEXT: [[SPARE_TAG_TMP:%.*]] = shl i64 [[TAG]], 62
+// CHECK-NEXT: [[TAG:%.*]] = zext i32 [[TAG_TMP]] to i64
+// CHECK-NEXT: [[SPARE_TAG_TMP2:%.*]] = shl i64 [[TAG]], 62
+
+//   -- Not really necessary                                       -- 0xc000000000000000
+// CHECK-NEXT: [[SPARE_TAG_TMP:%.*]] = and i64 [[SPARE_TAG_TMP2]], -4611686018427387904
 
 //   -- Apply the new spare bits
 // CHECK-NEXT: [[SECOND_NEW:%.*]] = or i64 [[SPARE_TAG_TMP]], [[SECOND_PROJ]]
@@ -607,8 +609,8 @@ bb0(%0 : $SinglePayloadNontrivial):
 
 //   -- Load the high bits of the tag from the spare bits area
 // CHECK-NEXT: [[SPARE_BITS_TMP2:%.*]] = lshr i64 [[PAYLOAD]], 63
-// CHECK-NEXT: [[SPARE_BITS_TMP:%.*]] = trunc i64 [[SPARE_BITS_TMP2]] to i1
-// CHECK-NEXT: [[SPARE_BITS:%.*]] = zext i1 [[SPARE_BITS_TMP]] to i8
+// CHECK-NEXT: [[SPARE_BITS_TMP:%.*]] = trunc i64 [[SPARE_BITS_TMP2]] to i8
+// CHECK-NEXT: [[SPARE_BITS:%.*]] = and i8 [[SPARE_BITS_TMP]], 1
 // CHECK-NEXT: [[EXTRA_TAG:%.*]] = zext i1 [[EXTRA_TAG_TMP]] to i8
 
 //   -- Combine high bits and low bits to form tag
@@ -641,9 +643,10 @@ bb0(%0 : $SinglePayloadNontrivial):
 // CHECK-NEXT: [[PAYLOAD_PROJ:%.*]] = and i64 [[PAYLOAD]], 9223372036854775807
 
 //   -- Store low bits of tag in spare bits area
-// CHECK-NEXT: [[SPARE_TAG_TRUNC_TMP:%.*]] = trunc i32 [[SPARE_TAG_TMP3]] to i1
-// CHECK-NEXT: [[SPARE_TAG_TMP2:%.*]] = zext i1 [[SPARE_TAG_TRUNC_TMP]] to i64
-// CHECK-NEXT: [[SPARE_TAG:%.*]] = shl i64 [[SPARE_TAG_TMP2]], 63
+// CHECK-NEXT: [[SPARE_TAG_TMP2:%.*]] = zext i32 [[SPARE_TAG_TMP3]] to i64
+// CHECK-NEXT: [[SPARE_TAG_TMP:%.*]] = shl i64 [[SPARE_TAG_TMP2]], 63
+//                                                                -- 0x8000000000000000
+// CHECK-NEXT: [[SPARE_TAG:%.*]] = and i64 [[SPARE_TAG_TMP:%.*]], -9223372036854775808
 // CHECK-NEXT: [[PAYLOAD_NEW:%.*]] = or i64 [[SPARE_TAG]], [[PAYLOAD_PROJ]]
 
 //   -- Store the payload
