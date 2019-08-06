@@ -6396,21 +6396,11 @@ MultiPayloadEnumImplStrategy::completeFixedLayout(TypeConverter &TC,
   // See if the payload types have any spare bits in common.
   // At the end of the loop CommonSpareBits.size() will be the size (in bits)
   // of the largest payload.
-  PayloadSize = 0;
-  for (const auto &elt : ElementsWithPayload) {
-    auto &fixedPayloadTI = cast<FixedTypeInfo>(*elt.ti);
-    PayloadSize = std::max(PayloadSize,
-                           unsigned(fixedPayloadTI.getFixedSize().getValue()));
-  }
-
-  auto commonSpareBits = llvm::Optional<APInt>();
-  if (PayloadSize > 0) {
-    commonSpareBits = APInt::getAllOnesValue(PayloadSize * 8);
-  }
-
+  CommonSpareBits = {};
   Alignment worstAlignment(1);
   IsPOD_t isPOD = IsPOD;
   IsBitwiseTakable_t isBT = IsBitwiseTakable;
+  PayloadSize = 0;
   for (auto &elt : ElementsWithPayload) {
     auto &fixedPayloadTI = cast<FixedTypeInfo>(*elt.ti);
     if (fixedPayloadTI.getFixedAlignment() > worstAlignment)
@@ -6420,8 +6410,11 @@ MultiPayloadEnumImplStrategy::completeFixedLayout(TypeConverter &TC,
     if (!fixedPayloadTI.isBitwiseTakable(ResilienceExpansion::Maximal))
       isBT = IsNotBitwiseTakable;
 
-    if (PayloadSize == 0)
-      continue;
+    unsigned payloadBytes = fixedPayloadTI.getFixedSize().getValue();
+    unsigned payloadBits = fixedPayloadTI.getFixedSize().getValueInBits();
+
+    if (payloadBytes > PayloadSize)
+      PayloadSize = payloadBytes;
 
     // See what spare bits from the payload we can use for layout optimization.
 
@@ -6429,7 +6422,11 @@ MultiPayloadEnumImplStrategy::completeFixedLayout(TypeConverter &TC,
     // if the type is layout-dependent. (Even when the runtime does, it will
     // likely only track a subset of the spare bits.)
     if (!AllowFixedLayoutOptimizations || TIK < Loadable) {
-      commonSpareBits.getValue().clearAllBits();
+      if (CommonSpareBits.size() < payloadBits) {
+        // All bits are zero so we don't have to worry about endianness.
+        assert(CommonSpareBits.none());
+        CommonSpareBits.extendWithClearBits(payloadBits);
+      }
       continue;
     }
 
@@ -6440,15 +6437,9 @@ MultiPayloadEnumImplStrategy::completeFixedLayout(TypeConverter &TC,
     // class-bound archetype. These do not have any spare bits because
     // they can contain Obj-C tagged pointers. To handle this case
     // correctly, we get spare bits from the unsubstituted type.
-    auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
-    auto spareBits = cast<FixedTypeInfo>(*elt.origTI).getSpareBits();
-    builder.append(spareBits);
-    builder.padWithSetBitsTo(PayloadSize * 8);
-    commonSpareBits.getValue() &= builder.build().getValue();
+    auto &fixedOrigTI = cast<FixedTypeInfo>(*elt.origTI);
+    fixedOrigTI.applyFixedSpareBitsMask(IGM, CommonSpareBits);
   }
-
-  if (PayloadSize > 0)
-    CommonSpareBits = ClusteredBitVector::fromAPInt(commonSpareBits.getValue());
 
   unsigned commonSpareBitCount = CommonSpareBits.count();
   unsigned usedBitCount = CommonSpareBits.size() - commonSpareBitCount;
@@ -6657,7 +6648,7 @@ const TypeInfo *TypeConverter::convertEnumType(TypeBase *key, CanType type,
                llvm::dbgs() << ":\n";);
 
     SpareBitVector spareBits;
-    fixedTI->applyFixedSpareBitsMask(spareBits);
+    fixedTI->applyFixedSpareBitsMask(IGM, spareBits);
 
     auto bitMask = strategy->getBitMaskForNoPayloadElements();
     assert(bitMask.size() == fixedTI->getFixedSize().getValueInBits());

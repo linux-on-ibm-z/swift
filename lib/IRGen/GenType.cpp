@@ -30,6 +30,7 @@
 #include "llvm/Support/Path.h"
 #include "clang/CodeGen/SwiftCallingConv.h"
 
+#include "BitPatternBuilder.h"
 #include "EnumPayload.h"
 #include "LegacyLayoutFormat.h"
 #include "LoadableTypeInfo.h"
@@ -254,21 +255,27 @@ unsigned FixedTypeInfo::getSpareBitExtraInhabitantCount() const {
                   unsigned(ValueWitnessFlags::MaxNumExtraInhabitants));
 }
 
-void FixedTypeInfo::applyFixedSpareBitsMask(SpareBitVector &mask) const {
+void FixedTypeInfo::applyFixedSpareBitsMask(const IRGenModule &IGM,
+                                            SpareBitVector &mask) const {
+  auto builder = BitPatternBuilder(IGM.Triple.isLittleEndian());
+
   // If the mask is no longer than the stored spare bits, we can just
   // apply the stored spare bits.
   if (mask.size() <= SpareBits.size()) {
     // Grow the mask out if necessary; the tail padding is all spare bits.
-    mask.extendWithSetBits(SpareBits.size());
+    builder.append(mask);
+    builder.padWithSetBitsTo(SpareBits.size());
+    mask = SpareBitVector(builder.build());
     mask &= SpareBits;
     return;
   }
 
   // Otherwise, we have to grow out the stored spare bits before we
   // can intersect.
-  auto paddedSpareBits = SpareBits;
-  paddedSpareBits.extendWithSetBits(mask.size());
-  mask &= paddedSpareBits;
+  builder.append(SpareBits);
+  builder.padWithSetBitsTo(mask.size());
+  mask &= builder.build();
+  return;
 }
 
 APInt
