@@ -6795,16 +6795,16 @@ llvm::Value *irgen::emitGatherBits(IRGenFunction &IGF,
                                    llvm::Value *source,
                                    unsigned resultLowBit,
                                    unsigned resultBitWidth) {
-  auto &builder = IGF.Builder;
-  auto &context = IGF.IGM.getLLVMContext();
+  auto &B = IGF.Builder;
+  auto &C = IGF.IGM.getLLVMContext();
   assert(mask.getBitWidth() == source->getType()->getIntegerBitWidth()
     && "source and mask must have same width");
 
   // The source and mask need to be at least as wide as the result so
   // that bits can be shifted into the correct position.
-  auto destTy = llvm::IntegerType::get(context, resultBitWidth);
+  auto destTy = llvm::IntegerType::get(C, resultBitWidth);
   if (mask.getBitWidth() < resultBitWidth) {
-    source = builder.CreateZExt(source, destTy);
+    source = B.CreateZExt(source, destTy);
     mask = mask.zext(resultBitWidth);
   }
 
@@ -6825,25 +6825,25 @@ llvm::Value *irgen::emitGatherBits(IRGenFunction &IGF,
     int64_t offset = int64_t(partMask.countTrailingZeros()) - usedBits;
     if (offset > 0) {
       uint64_t shift = uint64_t(offset);
-      part = builder.CreateLShr(part, shift);
+      part = B.CreateLShr(part, shift);
       partMask.lshrInPlace(shift);
     } else if (offset < 0) {
       uint64_t shift = uint64_t(-offset);
-      part = builder.CreateShl(part, shift);
+      part = B.CreateShl(part, shift);
       partMask <<= shift;
     }
 
     // Truncate the output to the result size.
     if (partMask.getBitWidth() > resultBitWidth) {
       partMask = partMask.trunc(resultBitWidth);
-      part = builder.CreateTrunc(part, destTy);
+      part = B.CreateTrunc(part, destTy);
     }
 
     // Mask out selected bits.
-    part = builder.CreateAnd(part, partMask);
+    part = B.CreateAnd(part, partMask);
 
     // Accumulate the result.
-    result = result ? builder.CreateOr(result, part) : part;
+    result = result ? B.CreateOr(result, part) : part;
 
     // Update the offset and remaining mask.
     usedBits += partMask.countPopulation();
@@ -6860,30 +6860,30 @@ llvm::Value *irgen::emitScatterBits(IRGenFunction &IGF,
                                     llvm::Value *source,
                                     unsigned packedLowBit) {
   auto &DL = IGF.IGM.DataLayout;
-  auto &builder = IGF.Builder;
-  auto &context = IGF.IGM.getLLVMContext();
+  auto &B = IGF.Builder;
+  auto &C = IGF.IGM.getLLVMContext();
 
   // Expand or contract the packed bits to the destination type.
   auto bitSize = mask.getBitWidth();
   auto sourceTy = dyn_cast<llvm::IntegerType>(source->getType());
   if (!sourceTy) {
     auto numBits = DL.getTypeSizeInBits(source->getType());
-    sourceTy = llvm::IntegerType::get(context, numBits);
-    source = builder.CreateBitOrPointerCast(source, sourceTy);
+    sourceTy = llvm::IntegerType::get(C, numBits);
+    source = B.CreateBitOrPointerCast(source, sourceTy);
   }
   assert(packedLowBit < sourceTy->getBitWidth() &&
       "packedLowBit out of range");
 
-  auto destTy = llvm::IntegerType::get(context, bitSize);
+  auto destTy = llvm::IntegerType::get(C, bitSize);
   auto usedBits = int64_t(packedLowBit);
   if (usedBits > 0 && sourceTy->getBitWidth() > bitSize) {
     // Need to shift before truncation if the packed value is wider
     // than the mask.
-    source = builder.CreateLShr(source, uint64_t(usedBits));
+    source = B.CreateLShr(source, uint64_t(usedBits));
     usedBits = 0;
   }
   if (sourceTy->getBitWidth() != bitSize) {
-    source = builder.CreateZExtOrTrunc(source, destTy);
+    source = B.CreateZExtOrTrunc(source, destTy);
   }
 
   // No need to AND with the mask if the whole source can just be
@@ -6909,18 +6909,18 @@ llvm::Value *irgen::emitScatterBits(IRGenFunction &IGF,
     llvm::Value *part = source;
     int64_t offset = int64_t(partMask.countTrailingZeros()) - usedBits;
     if (offset > 0) {
-      part = builder.CreateShl(part, uint64_t(offset));
+      part = B.CreateShl(part, uint64_t(offset));
     } else if (offset < 0) {
-      part = builder.CreateLShr(part, uint64_t(-offset));
+      part = B.CreateLShr(part, uint64_t(-offset));
     }
 
     // Mask out selected bits.
     if (needMask) {
-      part = builder.CreateAnd(part, partMask);
+      part = B.CreateAnd(part, partMask);
     }
 
     // Accumulate the result.
-    result = result ? builder.CreateOr(result, part) : part;
+    result = result ? B.CreateOr(result, part) : part;
 
     // Update the offset and remaining mask.
     usedBits += partMask.countPopulation();

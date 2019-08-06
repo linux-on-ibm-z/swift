@@ -286,13 +286,13 @@ void EnumPayload::emitSwitch(IRGenFunction &IGF,
   }
 
   // Otherwise emit a switch statement.
-  auto &context = IGF.IGM.getLLVMContext();
+  auto &C = IGF.IGM.getLLVMContext();
   unsigned numBits = mask.countPopulation();
   auto target = emitGatherSpareBits(IGF, SpareBitVector::fromAPInt(mask),
                                     0, numBits);
   auto swi = IGF.Builder.CreateSwitch(target, dflt.getPointer(), cases.size());
   for (auto &c : cases) {
-    auto value = llvm::ConstantInt::get(context, gatherBits(mask, c.first));
+    auto value = llvm::ConstantInt::get(C, gatherBits(mask, c.first));
     swi->addCase(value, c.second);
   }
   assert(IGF.Builder.hasPostTerminatorIP());
