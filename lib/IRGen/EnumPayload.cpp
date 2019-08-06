@@ -473,7 +473,7 @@ EnumPayload::emitApplyOrMask(IRGenFunction &IGF,
 }
 
 void EnumPayload::emitScatterBits(IRGenFunction &IGF,
-                                  APInt mask,
+                                  const APInt &mask,
                                   llvm::Value *value) {
   auto &DL = IGF.IGM.DataLayout;
   auto &B = IGF.Builder;

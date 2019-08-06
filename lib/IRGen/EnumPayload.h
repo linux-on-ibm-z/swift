@@ -161,7 +161,7 @@ public:
   /// Scatter the bits in value to the bit positions indicated by the
   /// mask.
   void emitScatterBits(IRGenFunction &IGF,
-                       APInt mask,
+                       const APInt &mask,
                        llvm::Value *value);
 
   /// Gather bits from an enum payload based on a spare bit mask.
