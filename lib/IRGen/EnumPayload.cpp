@@ -15,6 +15,8 @@
 #include "Explosion.h"
 #include "GenEnum.h"
 #include "IRGenModule.h"
+
+#include <algorithm>
 #include <map>
 
 using namespace swift;
@@ -134,7 +136,6 @@ void EnumPayload::insertValue(IRGenFunction &IGF, llvm::Value *value,
 llvm::Value *EnumPayload::extractValue(IRGenFunction &IGF, llvm::Type *type,
                                        unsigned payloadOffset) const {
   auto &DL = IGF.IGM.DataLayout;
-  auto &C = IGF.IGM.getLLVMContext();
 
   // Create a mask for the value we are going to extract.
   auto payloadSize = getAllocSizeInBits(DL);
@@ -149,10 +150,6 @@ llvm::Value *EnumPayload::extractValue(IRGenFunction &IGF, llvm::Type *type,
   auto value = emitGatherSpareBits(IGF, bits, 0, valueSize);
 
   // Convert the integer value to the required type.
-  if (DL.getTypeSizeInBits(value->getType()) > valueSize) {
-    auto intTy = llvm::IntegerType::get(C, valueSize);
-    value = IGF.Builder.CreateTrunc(value, intTy);
-  }
   if (value->getType() != type) {
     value = IGF.Builder.CreateBitOrPointerCast(value, type);
   }
@@ -480,22 +477,11 @@ void EnumPayload::emitScatterBits(IRGenFunction &IGF,
                                   llvm::Value *value) {
   auto &DL = IGF.IGM.DataLayout;
   auto &B = IGF.Builder;
-  auto &C = IGF.IGM.getLLVMContext();
 
-  auto valueBits = DL.getTypeSizeInBits(value->getType());
-  mask = getLowestNSetBits(mask, valueBits);
-  auto maskReader = BitPatternReader(mask, DL.isLittleEndian());
-  auto maskPop = mask.countPopulation();
-  if (maskPop < valueBits) {
-    auto valueType = dyn_cast<llvm::IntegerType>(value->getType());
-    if (!valueType) {
-      valueType = llvm::IntegerType::get(C, valueBits);
-      value = B.CreateBitOrPointerCast(value, valueType);
-    }
-    auto newType = llvm::IntegerType::get(C, maskPop);
-    value = B.CreateTrunc(value, newType);
-  }
-  valueBits = maskPop;
+  unsigned valueBits = DL.getTypeSizeInBits(value->getType());
+  auto totalBits = std::min(valueBits, mask.countPopulation());
+  auto maskReader = BitPatternReader(getLowestNSetBits(mask, totalBits),
+                                     DL.isLittleEndian());
   auto usedBits = 0u;
   for (auto &pv : PayloadValues) {
     auto partType = getPayloadType(pv);
@@ -513,7 +499,7 @@ void EnumPayload::emitScatterBits(IRGenFunction &IGF,
     // Scatter bits from the source into the bits specified by the mask.
     auto offset = usedBits;
     if (DL.isBigEndian()) {
-      offset = valueBits - partCount - usedBits;
+      offset = totalBits - partCount - usedBits;
     }
     auto partValue = irgen::emitScatterBits(IGF, partMask, value, offset);
 
@@ -537,7 +523,7 @@ void EnumPayload::emitScatterBits(IRGenFunction &IGF,
 
     // Update our position in the source integer.
     usedBits += partCount;
-    if (usedBits >= valueBits) {
+    if (usedBits >= totalBits) {
       break;
     }
   }
@@ -549,6 +535,8 @@ EnumPayload::emitGatherSpareBits(IRGenFunction &IGF,
                                  unsigned firstBitOffset,
                                  unsigned resultBitWidth) const {
   auto &DL = IGF.IGM.DataLayout;
+  auto &C = IGF.IGM.getLLVMContext();
+
   auto mask = getLowestNSetBits(spareBits.asAPInt(),
                                 resultBitWidth - firstBitOffset);
   auto bitWidth = mask.countPopulation();
@@ -583,7 +571,7 @@ EnumPayload::emitGatherSpareBits(IRGenFunction &IGF,
     }
     // Get the spare bits from this part.
     auto bits = irgen::emitGatherBits(IGF, spareBitsPart,
-                                      v, offset, bitWidth);
+                                      v, offset, resultBitWidth);
     usedBits += numBitsInPart;
 
     // Accumulate it into the full set.
@@ -592,15 +580,12 @@ EnumPayload::emitGatherSpareBits(IRGenFunction &IGF,
     }
     spareBitValue = bits;
   }
-  auto destTy = llvm::IntegerType::get(IGF.IGM.getLLVMContext(),
-                                       resultBitWidth);
-  if (!spareBitValue) {
-    return llvm::ConstantInt::get(destTy, 0);
+  auto destTy = llvm::IntegerType::get(C, resultBitWidth);
+  if (spareBitValue) {
+    assert(spareBitValue->getType() == destTy);
+    return spareBitValue;
   }
-  if (resultBitWidth > bitWidth) {
-    return IGF.Builder.CreateZExt(spareBitValue, destTy);
-  }
-  return spareBitValue;
+  return llvm::ConstantInt::get(destTy, 0);
 }
 
 unsigned EnumPayload::getAllocSizeInBits(const llvm::DataLayout &DL) const {
